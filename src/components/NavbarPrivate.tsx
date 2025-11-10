@@ -1,14 +1,26 @@
 import { useNavigate, useLocation } from "react-router-dom"
-import { Button } from "@/components/ui/button"
-import { useAuth } from "@/app/providers/AuthProvider"
 import { useEffect, useState } from "react"
-import { getProfile } from "@/infrastructure/api/profileRepository"
 import clsx from "clsx"
+
+import { useAuth } from "@/app/providers/AuthProvider"
+import { getProfile } from "@/infrastructure/api/profileRepository"
+
+// shadcn/ui
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu"
 
 export function NavbarPrivate() {
   const navigate = useNavigate()
   const location = useLocation()
   const { logout } = useAuth()
+
   const [name, setName] = useState<string>("")
 
   useEffect(() => {
@@ -25,27 +37,33 @@ export function NavbarPrivate() {
 
   const handleLogout = () => {
     logout()
+    // pequeño defer para evitar race con navegación protegida
     setTimeout(() => navigate("/"), 0)
   }
 
-  // 🔹 Función auxiliar para saber si la ruta actual coincide
   const isActive = (path: string) => location.pathname === path
 
   return (
     <nav className="flex justify-between items-center px-8 py-4 bg-white shadow-sm border-b border-blue-100">
       {/* Logo */}
-      <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate("/home")}>
+      <div
+        className="flex items-center gap-3 cursor-pointer"
+        onClick={() => navigate("/home")}
+      >
         <img src="/logo.svg" alt="Perfomad" className="w-8 h-8" />
-        <h1 className="text-xl font-bold text-blue-700 tracking-tight">Perfomad</h1>
+        <h1 className="text-xl font-bold text-blue-700 tracking-tight">
+          Perfomad
+        </h1>
       </div>
 
-      {/* Links principales */}
+      {/* Links */}
       <ul className="hidden md:flex gap-6 font-medium text-gray-700">
         <li
           onClick={() => navigate("/campaigns")}
           className={clsx(
             "cursor-pointer transition hover:text-blue-600",
-            isActive("/campaigns") && "text-blue-700 font-semibold underline underline-offset-4"
+            isActive("/campaigns") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
           )}
         >
           Campañas
@@ -54,7 +72,8 @@ export function NavbarPrivate() {
           onClick={() => navigate("/optimization")}
           className={clsx(
             "cursor-pointer transition hover:text-blue-600",
-            isActive("/optimization") && "text-blue-700 font-semibold underline underline-offset-4"
+            isActive("/optimization") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
           )}
         >
           Optimización
@@ -63,7 +82,8 @@ export function NavbarPrivate() {
           onClick={() => navigate("/images")}
           className={clsx(
             "cursor-pointer transition hover:text-blue-600",
-            isActive("/images") && "text-blue-700 font-semibold underline underline-offset-4"
+            isActive("/images") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
           )}
         >
           Sube tus imágenes
@@ -72,46 +92,79 @@ export function NavbarPrivate() {
           onClick={() => navigate("/settings")}
           className={clsx(
             "cursor-pointer transition hover:text-blue-600",
-            isActive("/settings") && "text-blue-700 font-semibold underline underline-offset-4"
+            isActive("/settings") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
           )}
         >
           Configuración
         </li>
       </ul>
 
-      {/* Menú usuario */}
-      <div className="relative group">
-        <Button
-          variant="outline"
-          className="flex items-center gap-2 px-4 py-2 font-medium border-gray-300 text-gray-800 hover:bg-blue-50 hover:text-blue-700"
-        >
-          {name || "Usuario"}
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </Button>
+      {/* Menú de usuario (Radix) */}
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex items-center gap-2 px-4 py-2 font-medium border-gray-300 text-gray-800 hover:bg-blue-50 hover:text-blue-700"
+          >
+            {name || "Usuario"}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="w-4 h-4 text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </Button>
+        </DropdownMenuTrigger>
 
-        <div className="absolute right-0 mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition pointer-events-none group-hover:pointer-events-auto">
-          <button
-            onClick={() => navigate("/profile")}
-            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50"
+        {/* Usa portal + collision handling por defecto */}
+        <DropdownMenuContent
+          align="end"
+          sideOffset={8}
+          className="w-52 rounded-xl border border-gray-200 bg-white/95 backdrop-blur-md shadow-xl"
+        >
+          <DropdownMenuLabel className="text-gray-500">
+            Cuenta
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault()
+              navigate("/profile")
+            }}
+            className="cursor-pointer"
           >
             Perfil
-          </button>
-          <button
-            onClick={() => navigate("/settings")}
-            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50"
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault()
+              navigate("/settings")
+            }}
+            className="cursor-pointer"
           >
             Configuración
-          </button>
-          <button
-            onClick={handleLogout}
-            className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-b-lg"
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault()
+              handleLogout()
+            }}
+            className="cursor-pointer text-red-600 focus:text-red-700"
           >
             Cerrar sesión
-          </button>
-        </div>
-      </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </nav>
   )
 }

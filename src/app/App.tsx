@@ -13,6 +13,7 @@ import HomePage from "@/interface/pages/home/HomePage"
 import CampaignsPage from "@/interface/pages/home/CampaignsPage"
 import UploadImagesPage from "@/interface/pages/home/UploadImagesPage"
 import NotFoundPage from "@/interface/pages/NotFoundPage"
+import SettingsPage from "@/interface/pages/settings/SettingsPage"
 
 // Route guards
 import ProtectedRoute from "./router/ProtectedRoute"
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/home" element={<HomePage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/images" element={<UploadImagesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
           {/* 🧭 404 */}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { X, Upload, Eye, Loader2 } from "lucide-react"
@@ -17,6 +18,7 @@ export default function UploadImagesPage() {
   const [preview, setPreview] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   // 🔹 Obtener imágenes existentes al montar
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function UploadImagesPage() {
         })
       )
 
-      await fetchImages() // refrescar después de subir
+      await fetchImages()
     } catch (err) {
       console.error("Error subiendo imágenes:", err)
     } finally {
@@ -64,7 +66,7 @@ export default function UploadImagesPage() {
     try {
       setDeleting(filename)
       await deleteImage(filename)
-      await fetchImages() // refrescar después de eliminar
+      await fetchImages()
     } catch (err) {
       console.error("Error eliminando imagen:", err)
     } finally {
@@ -81,7 +83,19 @@ export default function UploadImagesPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-blue-50 via-white to-blue-100 text-gray-900">
-      <main className="flex flex-col items-center grow px-6 py-10 text-center">
+      <main className="flex flex-col items-center grow px-6 py-10 text-center w-full">
+        
+        {/* 🔹 Botón Volver */}
+        <div className="w-full max-w-6xl flex justify-start mb-6">
+          <Button
+            variant="outline"
+            onClick={() => navigate("/home")}
+            className="flex items-center gap-2"
+          >
+            ← Volver
+          </Button>
+        </div>
+
         <h2 className="text-4xl font-extrabold mb-3 text-blue-800 drop-shadow-sm">
           Sube tus <span className="text-blue-600">Imágenes</span>
         </h2>
@@ -121,9 +135,13 @@ export default function UploadImagesPage() {
               <Upload className="w-12 h-12 text-blue-500 mb-3" />
             )}
             <span className="text-blue-700 font-medium">
-              {isLoading ? "Subiendo imágenes..." : "Haz clic para seleccionar imágenes"}
+              {isLoading
+                ? "Subiendo imágenes..."
+                : "Haz clic para seleccionar imágenes"}
             </span>
-            <span className="text-gray-500 text-sm mt-1">o arrástralas aquí</span>
+            <span className="text-gray-500 text-sm mt-1">
+              o arrástralas aquí
+            </span>
           </label>
         </div>
 
@@ -175,7 +193,9 @@ export default function UploadImagesPage() {
             ))}
           </motion.div>
         ) : (
-          <p className="text-gray-500 mt-8 text-sm">Aún no has subido imágenes.</p>
+          <p className="text-gray-500 mt-8 text-sm">
+            Aún no has subido imágenes.
+          </p>
         )}
 
         {/* 🔹 Modal de preview */}
@@ -200,7 +220,11 @@ export default function UploadImagesPage() {
                     <X className="w-5 h-5" />
                   </Button>
                 </div>
-                <img src={preview} alt="Preview" className="w-full h-[70vh] object-contain" />
+                <img
+                  src={preview}
+                  alt="Preview"
+                  className="w-full h-[70vh] object-contain"
+                />
               </motion.div>
             </motion.div>
           )}

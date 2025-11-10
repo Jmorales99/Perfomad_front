@@ -1,9 +1,16 @@
-import { useAuth } from "@/app/providers/AuthProvider"
 import { useNavigate } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { getProfile } from "@/infrastructure/api/profileRepository"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardContent } from "@/components/ui/card"
+import {
+  Megaphone,
+  Rocket,
+  ImageIcon,
+  Settings,
+  Link2,
+  ArrowRight,
+} from "lucide-react"
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -24,47 +31,55 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-blue-50 via-white to-blue-100 text-gray-900">
       {/* Contenido principal */}
-      <main className="flex flex-col items-center justify-center grow px-6 text-center">
+      <main className="flex flex-col items-center grow px-6 py-10 text-center">
         <h2 className="text-4xl font-extrabold mb-3 text-blue-800 drop-shadow-sm">
-          ¡Bienvenido, <span className="text-blue-600">{name || "usuario"}</span>! 🎯
+          ¡Bienvenido,{" "}
+          <span className="text-blue-600">{name || "usuario"}</span>! 🎯
         </h2>
-        <p className="text-lg text-gray-600 mb-10">
-          Gestiona tus cuentas, campañas y optimizaciones desde aquí.
+        <p className="text-gray-600 mb-12 text-lg max-w-2xl">
+          Gestiona tus campañas, creatividades, integraciones y configuración desde un solo lugar.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-6xl">
           <FeatureCard
             title="Campañas"
+            description="Crea, edita y analiza tus campañas publicitarias en distintas plataformas."
+            icon={<Megaphone className="w-8 h-8 text-blue-600" />}
             color="from-blue-500 to-blue-700"
-            description="Crea, edita y analiza tus campañas publicitarias."
             onClick={() => navigate("/campaigns")}
           />
           <FeatureCard
             title="Optimización"
+            description="Mejora el rendimiento de tus anuncios fácilmente con inteligencia automatizada."
+            icon={<Rocket className="w-8 h-8 text-indigo-600" />}
             color="from-indigo-500 to-indigo-700"
-            description="Mejora el rendimiento de tus anuncios fácilmente."
+            onClick={() => navigate("/optimization")}
           />
           <FeatureCard
             title="Sube tus Imágenes"
+            description="Centraliza tus creatividades y recursos visuales para todas las plataformas."
+            icon={<ImageIcon className="w-8 h-8 text-blue-600" />}
             color="from-blue-500 to-blue-700"
-            description="Centraliza tus creatividades para todas las plataformas."
             onClick={() => navigate("/images")}
           />
           <FeatureCard
             title="Configuración"
+            description="Gestiona tu cuenta, tus métodos de pago y preferencias personales."
+            icon={<Settings className="w-8 h-8 text-blue-700" />}
             color="from-blue-500 to-blue-700"
-            description="Ajusta la información de tu cuenta y tus integraciones."
             onClick={() => navigate("/settings")}
           />
           <FeatureCard
-            title="Conectar cuentas"
-            color="from-sky-500 to-blue-600"
+            title="Conectar Cuentas"
             description="Vincula Meta, Google Ads o LinkedIn para sincronizar tus datos y campañas."
+            icon={<Link2 className="w-8 h-8 text-sky-600" />}
+            color="from-sky-500 to-blue-600"
             onClick={() => navigate("/integrations")}
           />
         </div>
       </main>
 
+      {/* Footer */}
       <footer className="text-center py-4 text-gray-500 text-sm border-t border-blue-200 mt-8 bg-blue-50">
         © {new Date().getFullYear()} Perfomad — Todos los derechos reservados.
       </footer>
@@ -75,26 +90,32 @@ export default function HomePage() {
 function FeatureCard({
   title,
   description,
+  icon,
   color,
   onClick,
 }: {
   title: string
   description: string
+  icon: React.ReactNode
   color: string
   onClick?: () => void
 }) {
   return (
-    <Card className="hover:shadow-lg hover:-translate-y-1 transition-all border border-blue-100 bg-white/90 backdrop-blur-sm">
-      <CardHeader>
-        <h3 className="text-lg font-semibold text-gray-800 mb-1">{title}</h3>
+    <Card
+      onClick={onClick}
+      className="hover:shadow-xl hover:-translate-y-1 transition-all border border-blue-100 bg-white/90 backdrop-blur-sm cursor-pointer"
+    >
+      <CardHeader className="flex flex-col items-center gap-3">
+        <div className="p-3 bg-blue-50 rounded-2xl">{icon}</div>
+        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
       </CardHeader>
-      <CardContent>
-        <p className="text-gray-600 text-sm mb-4">{description}</p>
+      <CardContent className="flex flex-col items-center justify-between text-center px-4">
+        <p className="text-gray-600 text-sm mb-6 min-h-[50px]">{description}</p>
         <Button
           onClick={onClick}
-          className={`w-full bg-gradient-to-r ${color} text-white hover:opacity-90 transition`}
+          className={`w-full bg-gradient-to-r ${color} text-white hover:opacity-90 flex items-center justify-center gap-2`}
         >
-          Ir
+          Ir <ArrowRight className="w-4 h-4" />
         </Button>
       </CardContent>
     </Card>
