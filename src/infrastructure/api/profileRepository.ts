@@ -4,8 +4,11 @@ export interface Profile {
   id: string
   email: string
   name: string
-  age: number
-  has_completed_onboarding: boolean
+  age?: number
+  phone?: string
+  has_completed_onboarding?: boolean
+  has_active_subscription?: boolean
+  created_at?: string
 }
 
 /**

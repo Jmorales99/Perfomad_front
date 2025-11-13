@@ -2,7 +2,8 @@
 import { apiClient } from "./client"
 
 /**
- * 🔐 Iniciar sesión
+ * 🔐 Iniciar sesión (flujo seguro)
+ * El frontend llama a tu API → tu API llama a Supabase → devuelve token.
  */
 export const loginUser = async (
   email: string,
@@ -18,21 +19,19 @@ export const loginUser = async (
 
     return token
   } catch (error: any) {
+    console.error("❌ Error en loginUser:", error)
+
     if (error.response) {
-      // 👇 Preferimos usar el mensaje del backend si viene
       const backendError =
         error.response.data?.error || error.response.data?.message
       if (backendError) throw new Error(backendError)
 
-      // Fallbacks por tipo de status
       if (error.response.status === 401) {
-        throw new Error(
-          "Credenciales inválidas. Verifica tu correo y contraseña."
-        )
+        throw new Error("Credenciales inválidas. Verifica tu correo y contraseña.")
       } else if (error.response.status === 400) {
         throw new Error("Solicitud inválida. Revisa los datos ingresados.")
       } else {
-        throw new Error("Error en el servidor.")
+        throw new Error("Error interno del servidor.")
       }
     } else if (error.request) {
       throw new Error("No se pudo conectar con el servidor. Intenta más tarde.")
@@ -43,8 +42,8 @@ export const loginUser = async (
 }
 
 /**
- * 🧾 Registrar usuario con datos adicionales
- * (email, password, name, age, phone)
+ * 🧾 Registrar usuario (flujo seguro)
+ * El frontend llama a tu API → tu API llama a Supabase → crea usuario.
  */
 export const registerUser = async (
   email: string,
@@ -54,23 +53,26 @@ export const registerUser = async (
   phone: string
 ): Promise<void> => {
   try {
-    await apiClient.post('/v1/auth/signup', { email, password, name, age, phone })
+    await apiClient.post("/v1/auth/signup", { email, password, name, age, phone })
   } catch (error: any) {
+    console.error("❌ Error en registerUser:", error)
+
     if (error.response) {
-      const backendError = error.response.data?.error || error.response.data?.message
+      const backendError =
+        error.response.data?.error || error.response.data?.message
       if (backendError) throw new Error(backendError)
 
       if (error.response.status === 409) {
-        throw new Error('El usuario ya existe.')
+        throw new Error("El usuario ya existe.")
       } else if (error.response.status === 400) {
-        throw new Error('Datos inválidos. Verifica los campos.')
+        throw new Error("Datos inválidos. Verifica los campos.")
       } else {
-        throw new Error('Error al registrar usuario.')
+        throw new Error("Error al registrar usuario.")
       }
     } else if (error.request) {
-      throw new Error('No se pudo conectar con el servidor. Intenta nuevamente.')
+      throw new Error("No se pudo conectar con el servidor. Intenta nuevamente.")
     } else {
-      throw new Error('Error desconocido al registrar.')
+      throw new Error("Error desconocido al registrar.")
     }
   }
 }
