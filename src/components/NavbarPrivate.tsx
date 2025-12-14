@@ -59,6 +59,16 @@ export function NavbarPrivate() {
       {/* Links */}
       <ul className="hidden md:flex gap-6 font-medium text-gray-700">
         <li
+          onClick={() => navigate("/home")}
+          className={clsx(
+            "cursor-pointer transition hover:text-blue-600",
+            isActive("/home") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
+          )}
+        >
+          Inicio
+        </li>
+        <li
           onClick={() => navigate("/campaigns")}
           className={clsx(
             "cursor-pointer transition hover:text-blue-600",
@@ -67,16 +77,6 @@ export function NavbarPrivate() {
           )}
         >
           Campañas
-        </li>
-        <li
-          onClick={() => navigate("/optimization")}
-          className={clsx(
-            "cursor-pointer transition hover:text-blue-600",
-            isActive("/optimization") &&
-              "text-blue-700 font-semibold underline underline-offset-4"
-          )}
-        >
-          Optimización
         </li>
         <li
           onClick={() => navigate("/images")}

@@ -1,13 +1,20 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { isTokenExpired, removeToken } from '@/infrastructure/storage/tokenStorage'
 import { useEffect, useState } from 'react'
 
 export default function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, loading, logout } = useAuth()
+  const location = useLocation()
   const [isAllowed, setIsAllowed] = useState<boolean | null>(null)
 
   useEffect(() => {
+    // Wait for auth loading to complete before making decisions
+    if (loading) {
+      setIsAllowed(null)
+      return
+    }
+
     if (!isAuthenticated) {
       setIsAllowed(true)
       return
@@ -21,11 +28,19 @@ export default function PublicRoute({ children }: { children: React.ReactNode })
       return
     }
 
-    // Si sigue autenticado y el token está vigente → redirigir al home
+    // Si sigue autenticado y el token está vigente → redirigir
+    // Try to redirect to the original intended location, or default to home
     setIsAllowed(false)
-  }, [isAuthenticated])
+  }, [isAuthenticated, loading, logout])
 
-  if (isAllowed === null) return null
+  if (loading || isAllowed === null) return null
 
-  return isAllowed ? children : <Navigate to="/home" replace />
+  // If authenticated and trying to access public route, redirect to home or previous location
+  if (!isAllowed) {
+    // Check if there's a 'from' location in state (from ProtectedRoute redirect)
+    const from = location.state?.from?.pathname || '/home'
+    return <Navigate to={from} replace />
+  }
+
+  return children
 }

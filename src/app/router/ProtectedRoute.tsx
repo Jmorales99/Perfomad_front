@@ -1,13 +1,20 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { isTokenExpired, removeToken } from '@/infrastructure/storage/tokenStorage'
 import { useEffect, useState } from 'react'
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, loading, logout } = useAuth()
+  const location = useLocation()
   const [isValid, setIsValid] = useState<boolean | null>(null)
 
   useEffect(() => {
+    // Wait for auth loading to complete before making decisions
+    if (loading) {
+      setIsValid(null)
+      return
+    }
+
     // Si no está autenticado, salimos
     if (!isAuthenticated) {
       setIsValid(false)
@@ -24,10 +31,11 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
     // Token válido
     setIsValid(true)
-  }, [isAuthenticated])
+  }, [isAuthenticated, loading, logout])
 
-  // Mientras validamos, no renderizamos nada (evita flicker)
-  if (isValid === null) return null
+  // Mientras validamos (loading o isValid null), no renderizamos nada (evita flicker)
+  if (loading || isValid === null) return null
 
-  return isValid ? children : <Navigate to="/auth" replace />
+  // Preserve the current location when redirecting to login
+  return isValid ? children : <Navigate to="/auth" state={{ from: location }} replace />
 }

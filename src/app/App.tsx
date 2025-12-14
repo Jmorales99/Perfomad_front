@@ -11,6 +11,7 @@ import AuthPage from "@/interface/pages/auth/AuthPage"
 import RegisterPage from "@/interface/pages/auth/RegisterPage"
 import HomePage from "@/interface/pages/home/HomePage"
 import CampaignsPage from "@/interface/pages/home/CampaignsPage"
+import CampaignDetailsPage from "@/interface/pages/home/CampaignDetailsPage"
 import UploadImagesPage from "@/interface/pages/home/UploadImagesPage"
 import NotFoundPage from "@/interface/pages/NotFoundPage"
 import SettingsPage from "@/interface/pages/settings/SettingsPage"
@@ -55,6 +56,8 @@ export default function App() {
           >
             <Route path="/home" element={<HomePage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
+            <Route path="/campaigns/:id" element={<CampaignDetailsPage />} />
+            <Route path="/optimize/:id" element={<CampaignDetailsPage />} />
             <Route path="/images" element={<UploadImagesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

@@ -1,11 +1,10 @@
 import { useAuth } from "@/app/providers/AuthProvider"
 import { Button } from "@/components/ui/button"
-import axios from "axios"
+import { apiClient } from "@/infrastructure/api/client"
 import { useState } from "react"
-import { getAccessToken } from "@/infrastructure/storage/tokenStorage"
 
 export function SubscriptionBanner() {
-  const { hasSubscription, setHasSubscription } = useAuth()
+  const { hasSubscription, setHasSubscription, refreshProfile } = useAuth()
   const [loading, setLoading] = useState(false)
 
   // 🚫 Si el usuario ya tiene suscripción activa, no mostrar nada
@@ -14,19 +13,13 @@ export function SubscriptionBanner() {
   const handleActivate = async () => {
     try {
       setLoading(true)
-      const token = getAccessToken()
-      if (!token) throw new Error("Token no disponible")
-
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/v1/subscription/activate-dummy`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-
-      setHasSubscription(true)
-    } catch (err) {
-      console.error("Error al activar suscripción dummy:", err)
-      alert("No se pudo activar la suscripción de prueba.")
+      await apiClient.post("/v1/subscription/activate", {})
+      // Refresh profile to get updated subscription status
+      await refreshProfile()
+    } catch (err: any) {
+      console.error("Error al activar suscripción:", err)
+      const errorMessage = err.response?.data?.error || err.message || "No se pudo activar la suscripción."
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -45,7 +38,7 @@ export function SubscriptionBanner() {
         disabled={loading}
         className="bg-blue-600 hover:bg-blue-700 text-white"
       >
-        {loading ? "Activando..." : "Activar suscripción (dummy)"}
+        {loading ? "Activando..." : "Activar suscripción"}
       </Button>
     </div>
   )

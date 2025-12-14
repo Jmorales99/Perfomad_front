@@ -1,16 +1,25 @@
-import { useState } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { useNavigate, Link, useLocation } from "react-router-dom"
 import { useAuth } from "@/app/providers/AuthProvider"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
 
 export default function AuthPage() {
-  const { login } = useAuth()
+  const { login, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+
+  // If already authenticated, redirect to intended destination or home
+  useEffect(() => {
+    if (isAuthenticated) {
+      const from = location.state?.from?.pathname || "/home"
+      navigate(from, { replace: true })
+    }
+  }, [isAuthenticated, navigate, location])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -18,8 +27,13 @@ export default function AuthPage() {
     setLoading(true)
     const success = await login(email, password)
     setLoading(false)
-    if (success) navigate("/home")
-    else setError("Credenciales incorrectas, intenta nuevamente.")
+    if (success) {
+      // Redirect to the originally intended location, or default to home
+      const from = location.state?.from?.pathname || "/home"
+      navigate(from, { replace: true })
+    } else {
+      setError("Credenciales incorrectas, intenta nuevamente.")
+    }
   }
 
   return (

@@ -23,6 +23,7 @@ interface AuthContextType {
   ) => Promise<boolean>
   logout: () => void
   setHasSubscription: (value: boolean) => void
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -114,6 +115,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setTimeout(() => markLoggingOut(false), 2000)
   }
 
+  // ==============================
+  // 🔹 Refresh Profile
+  // ==============================
+  const refreshProfile = async () => {
+    try {
+      const profile = await getProfile()
+      setUser(profile)
+      setHasSubscription(!!profile.has_active_subscription)
+    } catch (err) {
+      console.error("❌ Error al refrescar perfil:", err)
+    }
+  }
+
   const value: AuthContextType = {
     isAuthenticated,
     hasSubscription,
@@ -123,6 +137,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     register,
     logout,
     setHasSubscription,
+    refreshProfile,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

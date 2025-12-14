@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -20,22 +20,22 @@ export default function UploadImagesPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  // 🔹 Obtener imágenes existentes al montar
-  useEffect(() => {
-    fetchImages()
-  }, [])
-
-  const fetchImages = async () => {
+  // 🔹 Obtener imágenes existentes (memoized)
+  const fetchImages = useCallback(async () => {
     try {
       const res = await getImages()
       setImages(res)
     } catch (error) {
       console.error("Error al cargar imágenes:", error)
     }
-  }
+  }, [])
 
-  // 🔹 Subir imágenes
-  const handleFileUpload = async (files: FileList | null) => {
+  useEffect(() => {
+    fetchImages()
+  }, [fetchImages])
+
+  // 🔹 Subir imágenes (memoized)
+  const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files) return
     setIsLoading(true)
 
@@ -59,10 +59,10 @@ export default function UploadImagesPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [fetchImages])
 
-  // 🔹 Eliminar imagen
-  const handleRemove = async (filename: string) => {
+  // 🔹 Eliminar imagen (memoized)
+  const handleRemove = useCallback(async (filename: string) => {
     try {
       setDeleting(filename)
       await deleteImage(filename)
@@ -72,14 +72,14 @@ export default function UploadImagesPage() {
     } finally {
       setDeleting(null)
     }
-  }
+  }, [fetchImages])
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
     handleFileUpload(e.dataTransfer.files)
-  }
+  }, [handleFileUpload])
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-blue-50 via-white to-blue-100 text-gray-900">
