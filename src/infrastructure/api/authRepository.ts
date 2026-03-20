@@ -58,21 +58,21 @@ export const registerUser = async (
     console.error("❌ Error en registerUser:", error)
 
     if (error.response) {
-      const backendError =
-        error.response.data?.error || error.response.data?.message
-      if (backendError) throw new Error(backendError)
-
-      if (error.response.status === 409) {
-        throw new Error("El usuario ya existe.")
-      } else if (error.response.status === 400) {
-        throw new Error("Datos inválidos. Verifica los campos.")
-      } else {
-        throw new Error("Error al registrar usuario.")
+      const status = error.response.status
+      if (status === 409) {
+        throw new Error("USER_ALREADY_EXISTS")
       }
+      if (status === 400) {
+        throw new Error("VALIDATION_FAILED")
+      }
+      if (status >= 500) {
+        throw new Error("SERVER_ERROR")
+      }
+      throw new Error("REGISTER_FAILED")
     } else if (error.request) {
-      throw new Error("No se pudo conectar con el servidor. Intenta nuevamente.")
+      throw new Error("NETWORK_ERROR")
     } else {
-      throw new Error("Error desconocido al registrar.")
+      throw new Error("REGISTER_FAILED")
     }
   }
 }

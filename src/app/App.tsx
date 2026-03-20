@@ -32,9 +32,11 @@ export default function App() {
       <ClientProvider>
       <BrowserRouter>
         <Routes>
-          {/* 🌐 Páginas públicas (sin sesión) */}
+          {/* 🌐 Landing pública (layout propio) */}
+          <Route path="/" element={<LandingPage />} />
+
+          {/* 🌐 Páginas públicas con PublicLayout */}
           <Route element={<PublicLayout />}>
-            <Route path="/" element={<LandingPage />} />
             <Route
               path="/auth"
               element={

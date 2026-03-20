@@ -1,22 +1,15 @@
 // src/interface/layouts/PublicLayout.tsx
 import { Outlet } from "react-router-dom"
 
+/**
+ * Sin header ni footer fijos: auth/register ocupan toda la altura (evita scroll innecesario).
+ */
 export function PublicLayout() {
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header simple arriba */}
-      <header className="w-full py-4 text-center font-bold text-xl text-blue-700 bg-transparent">
-        Perfomad
-      </header>
-
-      {/* 👇 Elimina la limitación visual, deja que el hijo maneje el fondo */}
-      <main className="flex-1">
-        <Outlet /> {/* Aquí se renderiza Landing, Login o Registro */}
+    <div className="min-h-dvh flex flex-col">
+      <main className="flex-1 flex flex-col min-h-0">
+        <Outlet />
       </main>
-
-      <footer className="text-center py-4 text-sm text-gray-500 border-t bg-transparent">
-        © {new Date().getFullYear()} Perfomad — Impulsa tu rendimiento digital 🚀
-      </footer>
     </div>
   )
 }
