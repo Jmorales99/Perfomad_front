@@ -35,11 +35,6 @@ export default function RegisterPage() {
     setSuccessMsg(null)
   }
 
-  const handlePhoneChange = (value: string | undefined) => {
-    setForm({ ...form, phone: value || "" })
-    setError(null)
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)

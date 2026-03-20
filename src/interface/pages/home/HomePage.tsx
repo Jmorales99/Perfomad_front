@@ -1,7 +1,8 @@
-import { useNavigate } from "react-router-dom"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { getProfile } from "@/infrastructure/api/profileRepository"
 import { getDashboardMetrics, getCampaigns, getDashboardSalesHistory, type CampaignDTO, type SalesHistoryResponse, type Platform } from "@/infrastructure/api/campaignsRepository"
+import { useDashboardPlatformSummary } from "@/interface/hooks/usePlatforms"
+import { PlatformCard } from "@/interface/components/PlatformCard"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -50,17 +51,18 @@ interface DashboardMetrics {
 }
 
 export default function HomePage() {
-  const navigate = useNavigate()
   const [name, setName] = useState<string>("")
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [campaigns, setCampaigns] = useState<CampaignDTO[]>([])
   const [salesHistory, setSalesHistory] = useState<SalesHistoryResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const { data: platformsSummary, loading: platformsLoading } = useDashboardPlatformSummary()
   
   // Date filter state for sales chart
   const [customStartDate, setCustomStartDate] = useState<string>("")
   const [customEndDate, setCustomEndDate] = useState<string>("")
-  const [daysFilter, setDaysFilter] = useState<number>(30) // Default 30 days
+  const [daysFilter, setDaysFilter] = useState<number>(90) // Default 90 days
+  const [dateFilterOpen, setDateFilterOpen] = useState<boolean>(false)
   
   // Campaign and platform filter state for sales chart
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([])
@@ -191,189 +193,87 @@ export default function HomePage() {
     return null
   }
 
-  const statusColors: Record<string, string> = {
-    active: "bg-green-100 text-green-700",
-    paused: "bg-yellow-100 text-yellow-700",
-    completed: "bg-gray-100 text-gray-700",
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-100">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto py-4">
         {/* 🧩 Banner de suscripción */}
         <SubscriptionBanner />
 
-        <h2 className="text-4xl font-extrabold mb-3 text-blue-800 drop-shadow-sm">
-          ¡Bienvenido, <span className="text-blue-600">{name || "usuario"}</span>! 🎯
-        </h2>
-        <p className="text-gray-600 mb-8 text-lg">
-          Resumen de tus campañas y métricas de rendimiento
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">
+              Bienvenido, <span className="text-blue-600">{name || "usuario"}</span>
+            </h2>
+            <p className="text-gray-500 text-sm mt-0.5">
+              Resumen de tus campañas y métricas
+            </p>
+          </div>
+        </div>
 
         {loading ? (
           <div className="text-center py-12">Cargando datos...</div>
         ) : (
           <>
-            {/* Quick Actions - At the Top */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => navigate("/campaigns")}
-              >
-                <CardContent className="p-4 text-center">
-                  <Megaphone className="w-6 h-6 mx-auto mb-2 text-blue-600" />
-                  <p className="text-sm font-medium">Campañas</p>
-                </CardContent>
-              </Card>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => navigate("/images")}
-              >
-                <CardContent className="p-4 text-center">
-                  <ImageIcon className="w-6 h-6 mx-auto mb-2 text-blue-600" />
-                  <p className="text-sm font-medium">Imágenes</p>
-                </CardContent>
-              </Card>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => navigate("/settings")}
-              >
-                <CardContent className="p-4 text-center">
-                  <Settings className="w-6 h-6 mx-auto mb-2 text-blue-600" />
-                  <p className="text-sm font-medium">Configuración</p>
-                </CardContent>
-              </Card>
-              <Card
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => navigate("/settings?tab=integrations")}
-              >
-                <CardContent className="p-4 text-center">
-                  <Link2 className="w-6 h-6 mx-auto mb-2 text-blue-600" />
-                  <p className="text-sm font-medium">Integraciones</p>
-                </CardContent>
-              </Card>
-            </div>
-
             {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* Left Column - Metrics and Charts (3 columns) */}
-              <div className="lg:col-span-3 space-y-6">
-                {/* Summary Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Left Column - Main Metrics and Charts (2 columns) */}
+              <div className="lg:col-span-2 space-y-4">
+                {/* Summary Cards - Reduced to 4 most important */}
                 {metrics && (
                   <>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-gray-600">Total Campañas</p>
-                              <p className="text-2xl font-bold text-blue-600">{metrics.summary.total_campaigns}</p>
-                            </div>
-                            <Megaphone className="w-8 h-8 text-blue-400" />
-                          </div>
-                          <div className="mt-2 text-xs text-gray-500">
+                        <CardContent className="p-3">
+                          <p className="text-xs text-gray-500 mb-1">Total Campañas</p>
+                          <p className="text-2xl font-bold text-blue-600">{metrics.summary.total_campaigns}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
                             {metrics.summary.active_campaigns} activas
-                          </div>
+                          </p>
                         </CardContent>
                       </Card>
 
                       <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-gray-600">Gasto Total</p>
-                              <p className="text-2xl font-bold text-green-600">
-                                ${metrics.summary.total_spend.toFixed(2)}
-                              </p>
-                            </div>
-                            <DollarSign className="w-8 h-8 text-green-400" />
-                          </div>
-                          <div className="mt-2 text-xs text-gray-500">
-                            de ${metrics.summary.total_budget.toFixed(2)}
-                          </div>
+                        <CardContent className="p-3">
+                          <p className="text-xs text-gray-500 mb-1">Gasto Total</p>
+                          <p className="text-2xl font-bold text-green-600">
+                            ${metrics.summary.total_spend.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            de ${metrics.summary.total_budget.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </p>
                         </CardContent>
                       </Card>
 
                       <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-gray-600">CTR Promedio</p>
-                              <p className="text-2xl font-bold text-purple-600">
-                                {metrics.metrics.average_ctr.toFixed(2)}%
-                              </p>
-                            </div>
-                            <TrendingUp className="w-8 h-8 text-purple-400" />
-                          </div>
-                          <div className="mt-2 text-xs text-gray-500">
+                        <CardContent className="p-3">
+                          <p className="text-xs text-gray-500 mb-1">ROA</p>
+                          <p className="text-2xl font-bold text-green-600">
+                            {avgROA !== null ? `${avgROA.toFixed(2)}x` : "N/A"}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Return on Ad Spend
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardContent className="p-3">
+                          <p className="text-xs text-gray-500 mb-1">CTR Promedio</p>
+                          <p className="text-2xl font-bold text-purple-600">
+                            {metrics.metrics.average_ctr.toFixed(2)}%
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
                             {metrics.metrics.total_clicks.toLocaleString()} clics
-                          </div>
+                          </p>
                         </CardContent>
                       </Card>
-
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-gray-600">Impresiones</p>
-                              <p className="text-2xl font-bold text-orange-600">
-                                {metrics.metrics.total_impressions.toLocaleString()}
-                              </p>
-                            </div>
-                            <Eye className="w-8 h-8 text-orange-400" />
-                          </div>
-                          <div className="mt-2 text-xs text-gray-500">
-                            {metrics.metrics.total_clicks.toLocaleString()} clics
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      {/* CPA Card */}
-                      {avgCPA !== null && (
-                        <Card>
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm text-gray-600">CPA</p>
-                                <p className="text-2xl font-bold text-red-600">
-                                  ${avgCPA.toFixed(2)}
-                                </p>
-                              </div>
-                              <DollarSign className="w-8 h-8 text-red-400" />
-                            </div>
-                            <div className="mt-2 text-xs text-gray-500">
-                              Cost Per Acquisition
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-
-                      {/* ROA Card */}
-                      {avgROA !== null && (
-                        <Card>
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm text-gray-600">ROA</p>
-                                <p className="text-2xl font-bold text-green-600">
-                                  {avgROA.toFixed(2)}x
-                                </p>
-                              </div>
-                              <TrendingUp className="w-8 h-8 text-green-400" />
-                            </div>
-                            <div className="mt-2 text-xs text-gray-500">
-                              Return on Ad Spend
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
                     </div>
 
                     {/* Sales History Chart with Filter */}
                     <Card>
-                      <CardHeader>
+                      <CardHeader className="pb-2">
                         <div className="flex justify-between items-center flex-wrap gap-2">
-                          <CardTitle>Historial de Ventas Total</CardTitle>
+                          <CardTitle className="text-base">Historial de Ventas</CardTitle>
                           <div className="flex items-center gap-2 flex-wrap">
                             {/* Campaign Names Filter */}
                             <DropdownMenu modal={false}>
@@ -492,7 +392,7 @@ export default function HomePage() {
                             </DropdownMenu>
                             
                             {/* Date Filter */}
-                            <DropdownMenu modal={false}>
+                            <DropdownMenu modal={false} open={dateFilterOpen} onOpenChange={setDateFilterOpen}>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="sm" className="gap-2">
                                   <Calendar className="w-4 h-4" />
@@ -511,7 +411,7 @@ export default function HomePage() {
                             >
                               <DropdownMenuLabel>Filtrar por fecha</DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              <div className="p-2 space-y-3">
+                              <div className="p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
                                 {/* Quick Filters */}
                                 <div className="space-y-1">
                                   <DropdownMenuItem
@@ -545,61 +445,72 @@ export default function HomePage() {
                                     }}
                                     onSelect={(e) => e.preventDefault()}
                                   >
-                                    Últimos 90 días
+                                    Últimos 90 días (por defecto)
                                   </DropdownMenuItem>
                                 </div>
                                 <DropdownMenuSeparator />
                                 {/* Custom Date Range Inputs */}
                                 <div className="space-y-2">
                                   <div>
-                                    <Label htmlFor="start-date" className="text-xs text-gray-600">Desde</Label>
+                                    <Label htmlFor="start-date-filter" className="text-xs text-gray-600">Desde</Label>
                                     <input
-                                      id="start-date"
+                                      id="start-date-filter"
                                       type="date"
                                       value={customStartDate}
-                                      onChange={(e) => handleStartDateChange(e.target.value)}
+                                      onChange={(e) => {
+                                        e.stopPropagation()
+                                        handleStartDateChange(e.target.value)
+                                      }}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onFocus={(e) => e.stopPropagation()}
                                       className="w-full border rounded px-2 py-1.5 text-sm mt-1"
                                       max={new Date().toISOString().split('T')[0]}
-                                      onClick={(e) => e.stopPropagation()}
                                     />
                                   </div>
                                   <div>
-                                    <Label htmlFor="end-date" className="text-xs text-gray-600">Hasta (opcional)</Label>
+                                    <Label htmlFor="end-date-filter" className="text-xs text-gray-600">Hasta (opcional)</Label>
                                     <input
-                                      id="end-date"
+                                      id="end-date-filter"
                                       type="date"
                                       value={customEndDate || new Date().toISOString().split('T')[0]}
-                                      onChange={(e) => setCustomEndDate(e.target.value)}
+                                      onChange={(e) => {
+                                        e.stopPropagation()
+                                        setCustomEndDate(e.target.value)
+                                      }}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onFocus={(e) => e.stopPropagation()}
                                       className="w-full border rounded px-2 py-1.5 text-sm mt-1"
                                       min={customStartDate || undefined}
                                       max={new Date().toISOString().split('T')[0]}
-                                      onClick={(e) => e.stopPropagation()}
                                     />
                                   </div>
                                 </div>
                                 <div className="flex gap-2">
                                   <Button
                                     size="sm"
+                                    type="button"
                                     onClick={(e) => {
                                       e.preventDefault()
                                       e.stopPropagation()
                                       handleApplyCustomDateRange()
+                                      setDateFilterOpen(false)
                                     }}
                                     className="bg-blue-600 hover:bg-blue-700 flex-1"
                                     disabled={!customStartDate}
                                   >
                                     Aplicar
                                   </Button>
-                                  {(customStartDate || customEndDate || daysFilter !== 30) && (
+                                  {(customStartDate || customEndDate || daysFilter !== 90) && (
                                     <Button
                                       size="sm"
+                                      type="button"
                                       variant="outline"
                                       onClick={(e) => {
                                         e.preventDefault()
                                         e.stopPropagation()
                                         setCustomStartDate("")
                                         setCustomEndDate("")
-                                        setDaysFilter(30)
+                                        setDaysFilter(90)
                                       }}
                                     >
                                       <X className="w-4 h-4" />
@@ -641,22 +552,22 @@ export default function HomePage() {
                           )}
                         </div>
                       </div>
-                    </CardHeader>
-                      <CardContent>
+                      </CardHeader>
+                      <CardContent className="p-4">
                         {salesHistory && salesHistory.data && salesHistory.data.length > 0 ? (
                           <div>
                             {/* Chart content without Card wrapper */}
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                               {/* SVG Chart */}
                               <div className="w-full overflow-x-auto">
                                 <svg
-                                  viewBox="0 0 100 60"
-                                  className="w-full h-48 border-b border-l border-gray-200"
+                                  viewBox="0 0 100 50"
+                                  className="w-full h-36 border-b border-l border-gray-200"
                                   preserveAspectRatio="none"
                                 >
                                   {/* Grid lines */}
                                   {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-                                    const y = 10 + ratio * 40
+                                    const y = 10 + ratio * 30
                                     return (
                                       <line
                                         key={ratio}
@@ -681,7 +592,7 @@ export default function HomePage() {
                                     
                                     const points = sorted.map((point, index) => {
                                       const x = 10 + (index / (sorted.length - 1 || 1)) * 80
-                                      const y = 50 - ((point.total_sales - minSales) / range) * 40
+                                      const y = 40 - ((point.total_sales - minSales) / range) * 30
                                       return { x, y, ...point }
                                     })
                                     
@@ -720,23 +631,23 @@ export default function HomePage() {
                               </div>
 
                               {/* Legend and Summary */}
-                              <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+                              <div className="grid grid-cols-3 gap-3 pt-3 border-t">
                                 <div>
-                                  <p className="text-xs text-gray-500 mb-1">Ventas Totales</p>
-                                  <p className="text-lg font-bold text-blue-600">
-                                    ${salesHistory.data.reduce((sum, d) => sum + d.total_sales, 0).toFixed(2)}
+                                  <p className="text-xs text-gray-500 mb-0.5">Ventas Totales</p>
+                                  <p className="text-base font-bold text-blue-600">
+                                    ${salesHistory.data.reduce((sum, d) => sum + d.total_sales, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-gray-500 mb-1">Promedio Diario</p>
-                                  <p className="text-lg font-bold text-gray-700">
-                                    ${(salesHistory.data.reduce((sum, d) => sum + d.total_sales, 0) / salesHistory.data.length).toFixed(2)}
+                                  <p className="text-xs text-gray-500 mb-0.5">Promedio Diario</p>
+                                  <p className="text-base font-bold text-gray-700">
+                                    ${(salesHistory.data.reduce((sum, d) => sum + d.total_sales, 0) / salesHistory.data.length).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-gray-500 mb-1">Último Día</p>
-                                  <p className="text-lg font-bold text-green-600">
-                                    ${salesHistory.data[salesHistory.data.length - 1].total_sales.toFixed(2)}
+                                  <p className="text-xs text-gray-500 mb-0.5">Último Día</p>
+                                  <p className="text-base font-bold text-green-600">
+                                    ${salesHistory.data[salesHistory.data.length - 1].total_sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                   </p>
                                 </div>
                               </div>
@@ -756,146 +667,29 @@ export default function HomePage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="text-center text-gray-500 py-8">
+                          <div className="text-center text-gray-500 py-6 text-sm">
                             No hay datos de ventas disponibles para el período seleccionado.
                           </div>
                         )}
                       </CardContent>
                     </Card>
 
-                    {/* Budget Utilization Chart */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Utilización de Presupuesto</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span>Progreso</span>
-                            <span className="font-semibold">{metrics.summary.budget_utilization.toFixed(1)}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-4">
-                            <div
-                              className="bg-blue-600 h-4 rounded-full transition-all"
-                              style={{ width: `${Math.min(metrics.summary.budget_utilization, 100)}%` }}
-                            />
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            ${metrics.summary.total_spend.toFixed(2)} de ${metrics.summary.total_budget.toFixed(2)}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Platform Distribution */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Distribución por Plataforma</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {Object.entries(metrics.platform_distribution).map(([platform, count]) => (
-                            <div key={platform} className="flex items-center justify-between">
-                              <span className="text-sm font-medium">
-                                {platformLabels[platform] || platform}
-                              </span>
-                              <div className="flex items-center gap-2 flex-1 mx-4">
-                                <div className="flex-1 bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className="bg-blue-600 h-2 rounded-full"
-                                    style={{
-                                      width: `${(count / metrics.summary.total_campaigns) * 100}%`,
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-sm text-gray-600 w-8 text-right">{count}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Campaign Status Overview - At the Bottom of Dashboard */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Estado de Campañas</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="text-center">
-                            <div className="text-3xl font-bold text-green-600">{metrics.summary.active_campaigns}</div>
-                            <div className="text-sm text-gray-600 mt-1">Activas</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-3xl font-bold text-yellow-600">{metrics.summary.paused_campaigns}</div>
-                            <div className="text-sm text-gray-600 mt-1">Pausadas</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-3xl font-bold text-gray-600">{metrics.summary.completed_campaigns}</div>
-                            <div className="text-sm text-gray-600 mt-1">Completadas</div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
                   </>
                 )}
               </div>
 
-              {/* Right Column - Recent Campaigns (1 column, smaller) */}
-              <div className="lg:col-span-1 space-y-3">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Campañas Recientes</h3>
-                {campaigns.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-4 text-center text-gray-500">
-                      <p className="mb-3 text-sm">No tienes campañas aún</p>
-                      <Button 
-                        onClick={() => navigate("/campaigns")} 
-                        className="bg-blue-600 hover:bg-blue-700 text-xs"
-                        size="sm"
-                      >
-                        Crear Campaña
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <>
-                    {campaigns.map((campaign) => (
-                      <Card
-                        key={campaign.id}
-                        className="hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => navigate(`/campaigns/${campaign.id}`)}
-                      >
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm font-semibold line-clamp-1">{campaign.name}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${statusColors[campaign.status] || statusColors.active}`}>
-                              {campaign.status === "active" ? "Activa" : campaign.status === "paused" ? "Pausada" : "Completada"}
-                            </span>
-                            <div className="flex gap-1">
-                              {campaign.platforms.slice(0, 2).map((platform) => (
-                                <span key={platform} className="text-xs text-gray-500">
-                                  {platformLabels[platform] || platform}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            <div>${campaign.spend_usd.toFixed(0)} / ${campaign.budget_usd.toFixed(0)}</div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                    <Button
-                      onClick={() => navigate("/campaigns")}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm"
-                      size="sm"
-                    >
-                      Ver Todas
-                    </Button>
-                  </>
+              {/* Right Column - Platforms (1 column) */}
+              <div className="lg:col-span-1">
+                {/* Platforms Section */}
+                {!platformsLoading && platformsSummary && platformsSummary.platforms.length > 0 && (
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-800 mb-2">Plataformas</h3>
+                    <div className="space-y-2">
+                      {platformsSummary.platforms.map((platform) => (
+                        <PlatformCard key={platform.platform} platform={platform} />
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

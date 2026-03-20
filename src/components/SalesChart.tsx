@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { TrendingUp, TrendingDown } from "lucide-react"
-import { SalesHistoryPoint } from "@/infrastructure/api/campaignsRepository"
+import type { SalesHistoryPoint } from "@/infrastructure/api/campaignsRepository"
 
 interface SalesChartProps {
   data: SalesHistoryPoint[]
@@ -40,9 +40,9 @@ export function SalesChart({ data, improvement, periodDays, title = "Historial d
   const minSales = Math.min(...chartData.map((d) => d.total_sales), 0)
   const range = maxSales - minSales || 1
 
-  // Chart dimensions
+  // Chart dimensions - more compact
   const width = 100
-  const height = 60
+  const height = 50
   const padding = 10
 
   // Generate path for line chart

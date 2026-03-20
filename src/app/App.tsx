@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { AuthProvider } from "./providers/AuthProvider"
+import { ClientProvider } from "./providers/ClientProvider"
 
 // Layouts
 import { PublicLayout } from "@/interface/layouts/PublicLayout"
@@ -15,6 +16,11 @@ import CampaignDetailsPage from "@/interface/pages/home/CampaignDetailsPage"
 import UploadImagesPage from "@/interface/pages/home/UploadImagesPage"
 import NotFoundPage from "@/interface/pages/NotFoundPage"
 import SettingsPage from "@/interface/pages/settings/SettingsPage"
+import BrandsPage from "@/interface/pages/brands/BrandsPage"
+import MetaPage from "@/interface/pages/platforms/MetaPage"
+import GoogleAdsPage from "@/interface/pages/platforms/GoogleAdsPage"
+import LinkedInPage from "@/interface/pages/platforms/LinkedInPage"
+import TikTokPage from "@/interface/pages/platforms/TikTokPage"
 
 // Route guards
 import ProtectedRoute from "./router/ProtectedRoute"
@@ -23,6 +29,7 @@ import PublicRoute from "./router/PublicRoute"
 export default function App() {
   return (
     <AuthProvider>
+      <ClientProvider>
       <BrowserRouter>
         <Routes>
           {/* 🌐 Páginas públicas (sin sesión) */}
@@ -60,12 +67,18 @@ export default function App() {
             <Route path="/optimize/:id" element={<CampaignDetailsPage />} />
             <Route path="/images" element={<UploadImagesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/brands" element={<BrandsPage />} />
+            <Route path="/platforms/meta" element={<MetaPage />} />
+            <Route path="/platforms/google-ads" element={<GoogleAdsPage />} />
+            <Route path="/platforms/linkedin" element={<LinkedInPage />} />
+            <Route path="/platforms/tiktok" element={<TikTokPage />} />
           </Route>
 
           {/* 🧭 404 */}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
+      </ClientProvider>
     </AuthProvider>
   )
 }

@@ -34,6 +34,8 @@ import axios from "axios"
 import { useAuth } from "@/app/providers/AuthProvider"
 import { SubscriptionBanner } from "@/components/SubscriptionBanner"
 import { AdAccountErrorModal } from "@/interface/components/AdAccountErrorModal"
+import { useSubscriptionGate } from "@/interface/hooks/useSubscriptionGate"
+import { ApiError } from "@/infrastructure/api/errors"
 
 interface ImageItem {
   name: string
@@ -63,9 +65,6 @@ export default function CampaignsPage() {
   const [allCampaigns, setAllCampaigns] = useState<CampaignDTO[]>([]) // Store all campaigns
   const [selectedCampaignNames, setSelectedCampaignNames] = useState<string[]>([]) // Selected campaign names
   const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([]) // Selected platforms
-  const [showCampaignFilter, setShowCampaignFilter] = useState(false) // Show campaign name filter dropdown
-  const [showPlatformFilter, setShowPlatformFilter] = useState(false) // Show platform filter dropdown
-  
   const [form, setForm] = useState<{
     name: string
     platforms: Platform[]
@@ -86,6 +85,7 @@ export default function CampaignsPage() {
 
   const navigate = useNavigate()
   const { hasSubscription } = useAuth()
+  const { canAct, openPaywall, PaywallModal } = useSubscriptionGate()
 
   // ===========================
   // Fetch campañas e imágenes
@@ -389,7 +389,7 @@ export default function CampaignsPage() {
       }
 
       if (editing) {
-        await updateCampaign(editing.id, payload)
+        await updateCampaign(editing.id, payload as Parameters<typeof updateCampaign>[1])
       } else {
         await createCampaign(payload)
       }
@@ -408,15 +408,20 @@ export default function CampaignsPage() {
       })
       await fetchCampaigns()
     } catch (e: any) {
+      // Manejar 402 subscription_required del backend
+      if (e instanceof ApiError && e.code === 'subscription_required') {
+        setShowModal(false)
+        openPaywall()
+        return
+      }
+
       console.error("Error al guardar campaña:", e)
       
       // Check if it's an ad account error
       if (e.error === "NO_AD_ACCOUNTS" || e.error === "MISSING_PLATFORM_ACCOUNTS" || e.show_popup) {
         setAdAccountError(e as AdAccountError)
         setShowErrorModal(true)
-        // Don't close the form modal - let user see the error and choose to connect accounts
       } else {
-        // Other errors - show alert
         alert(e.message || "Error al guardar campaña. Intenta nuevamente.")
       }
     }
@@ -426,8 +431,8 @@ export default function CampaignsPage() {
   // Pre-check before showing modal
   // ===========================
   const handleOpenCreateModal = async () => {
-    if (!hasSubscription) {
-      alert("Necesitas una suscripción activa para crear campañas.")
+    if (!canAct) {
+      openPaywall()
       return
     }
 
@@ -463,8 +468,8 @@ export default function CampaignsPage() {
   // Eliminar campaña
   // ===========================
   const handleDelete = async (id: string) => {
-    if (!hasSubscription) {
-      alert("Necesitas una suscripción activa para eliminar campañas.")
+    if (!canAct) {
+      openPaywall()
       return
     }
 
@@ -562,7 +567,8 @@ export default function CampaignsPage() {
   // ===========================
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
-      {/* 🧩 Banner de suscripción */}
+      <PaywallModal />
+      {/* Banner de suscripción */}
       <SubscriptionBanner />
 
       {/* Header */}

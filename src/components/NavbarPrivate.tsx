@@ -57,7 +57,7 @@ export function NavbarPrivate() {
       </div>
 
       {/* Links */}
-      <ul className="hidden md:flex gap-6 font-medium text-gray-700">
+      <ul className="hidden md:flex gap-4 items-center font-medium text-gray-700">
         <li
           onClick={() => navigate("/home")}
           className={clsx(
@@ -77,6 +77,47 @@ export function NavbarPrivate() {
           )}
         >
           Campañas
+        </li>
+        {/* Platform Links - Separated */}
+        <li
+          onClick={() => navigate("/platforms/meta")}
+          className={clsx(
+            "cursor-pointer transition hover:text-blue-600",
+            isActive("/platforms/meta") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
+          )}
+        >
+          Meta
+        </li>
+        <li
+          onClick={() => navigate("/platforms/google-ads")}
+          className={clsx(
+            "cursor-pointer transition hover:text-blue-600",
+            isActive("/platforms/google-ads") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
+          )}
+        >
+          Google Ads
+        </li>
+        <li
+          onClick={() => navigate("/platforms/linkedin")}
+          className={clsx(
+            "cursor-pointer transition hover:text-blue-600",
+            isActive("/platforms/linkedin") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
+          )}
+        >
+          LinkedIn
+        </li>
+        <li
+          onClick={() => navigate("/platforms/tiktok")}
+          className={clsx(
+            "cursor-pointer transition hover:text-blue-600",
+            isActive("/platforms/tiktok") &&
+              "text-blue-700 font-semibold underline underline-offset-4"
+          )}
+        >
+          TikTok
         </li>
         <li
           onClick={() => navigate("/images")}

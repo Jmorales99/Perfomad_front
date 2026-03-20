@@ -3,127 +3,255 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { getProfile } from "@/infrastructure/api/profileRepository"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams, Link } from "react-router-dom"
+import { useAuth } from "@/app/providers/AuthProvider"
+import { useClient } from "@/app/providers/ClientProvider"
 import {
-  getConnectedAccounts,
-  syncConnectedAccounts,
-  type ConnectedAccount,
-  type Platform,
-} from "@/infrastructure/api/subscriptionRepository"
-import { CheckCircle2, RefreshCw } from "lucide-react"
-import { ConnectAccountModal } from "@/interface/components/ConnectAccountModal"
+  getMetaConnectLink,
+  syncMetaAccounts,
+  type MetaAccount,
+} from "@/infrastructure/repositories/integrations/metaRepository"
+import { ApiError } from "@/infrastructure/api/errors"
+import { CheckCircle2, RefreshCw, AlertCircle, Facebook, Link2, Linkedin } from "lucide-react"
 
+// ── Banner de resultado de conexión OAuth ──────────────────────────────────────
+type ConnectResult = { success: true; platform: string } | { success: false; message: string } | null
+
+function ConnectResultBanner({
+  result,
+  onDismiss,
+}: {
+  result: ConnectResult
+  onDismiss: () => void
+}) {
+  if (!result) return null
+  if (result.success) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-green-300 bg-green-50 px-4 py-3 mb-4">
+        <div className="flex items-center gap-2 text-green-800">
+          <CheckCircle2 className="w-5 h-5 shrink-0" />
+          <span className="text-sm font-medium">
+            ¡{result.platform === "meta" ? "Meta" : result.platform} conectado correctamente!
+          </span>
+        </div>
+        <button onClick={onDismiss} className="text-green-700 text-xs underline">
+          Cerrar
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 mb-4">
+      <div className="flex items-center gap-2 text-red-800">
+        <AlertCircle className="w-5 h-5 shrink-0" />
+        <span className="text-sm font-medium">Error al conectar: {result.message}</span>
+      </div>
+      <button onClick={onDismiss} className="text-red-700 text-xs underline">
+        Cerrar
+      </button>
+    </div>
+  )
+}
+
+// ── Card de integración ────────────────────────────────────────────────────────
+function IntegrationCard({
+  name,
+  icon,
+  description,
+  connected,
+  metaAccounts,
+  canAct,
+  syncing,
+  onConnect,
+  onSync,
+}: {
+  name: string
+  icon: React.ReactNode
+  description: string
+  connected: boolean
+  metaAccounts?: MetaAccount[]
+  canAct: boolean
+  syncing?: boolean
+  onConnect: () => void
+  onSync?: () => void
+}) {
+  return (
+    <div className="flex justify-between items-start border p-4 rounded-xl bg-white/80 backdrop-blur-sm hover:shadow-md transition gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          {icon}
+          <h3 className="font-semibold text-gray-800">{name}</h3>
+          {connected && <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />}
+        </div>
+        <p className="text-gray-600 text-sm mb-2">{description}</p>
+        {connected && metaAccounts && metaAccounts.length > 0 && (
+          <p className="text-xs text-gray-500">
+            {metaAccounts.length} cuenta{metaAccounts.length > 1 ? "s" : ""} sincronizada{metaAccounts.length > 1 ? "s" : ""}
+          </p>
+        )}
+        {!canAct && (
+          <p className="text-xs text-amber-600 mt-1">
+            Activa tu suscripción para conectar plataformas.
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col gap-2 shrink-0">
+        {connected ? (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-green-600 border-green-300 hover:bg-green-50"
+              disabled
+            >
+              <CheckCircle2 className="w-4 h-4 mr-1" />
+              Conectado
+            </Button>
+            {onSync && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onSync}
+                disabled={!canAct || syncing}
+              >
+                <RefreshCw className={`w-4 h-4 mr-1 ${syncing ? "animate-spin" : ""}`} />
+                Sincronizar
+              </Button>
+            )}
+          </>
+        ) : (
+          <Button
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={onConnect}
+            disabled={!canAct}
+          >
+            Conectar
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Página principal ───────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const [profile, setProfile] = useState<{ name: string; email: string }>({ name: "", email: "" })
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
-  const [loading, setLoading] = useState(true)
-  const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(null)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get("tab") || "profile"
 
+  const { hasSubscription } = useAuth()
+  const { selectedClientId, selectedClient, metaStatus, setMetaStatus } = useClient()
+  const canAct = hasSubscription
+
+  // Estado Meta (derivado del contexto + local para sesión actual)
+  const currentMetaStatus = selectedClientId ? metaStatus[selectedClientId] : null
+  const metaConnected = currentMetaStatus?.connected ?? false
+  const [syncedAccounts, setSyncedAccounts] = useState<MetaAccount[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [connectResult, setConnectResult] = useState<ConnectResult>(null)
+
+  // Leer perfil
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const data = await getProfile()
-        setProfile({ name: data.name, email: data.email })
-      } catch (e) {
-        console.error("Error al obtener perfil", e)
+    getProfile()
+      .then((d) => setProfile({ name: d.name, email: d.email }))
+      .catch(() => {})
+  }, [])
+
+  // Leer query params de retorno OAuth y limpiarlos
+  useEffect(() => {
+    const connect = searchParams.get("connect")
+    const platform = searchParams.get("platform")
+    const message = searchParams.get("message")
+
+    if (connect === "success" && platform) {
+      setConnectResult({ success: true, platform })
+      // Marcar Meta como conectado en el contexto si tenemos clientId
+      if (platform === "meta" && selectedClientId) {
+        setMetaStatus(selectedClientId, {
+          connected: true,
+          accountCount: 0,
+          lastSync: null,
+        })
       }
+      // Auto-sync si tiene suscripción y hay clientId
+      if (canAct && selectedClientId && platform === "meta") {
+        handleSyncMeta(selectedClientId)
+      }
+    } else if (connect === "error") {
+      setConnectResult({ success: false, message: message || "Error desconocido" })
     }
-    fetchProfile()
+
+    if (connect) {
+      // Limpiar query params para no repetir el banner al recargar
+      window.history.replaceState(null, "", window.location.pathname + (activeTab !== "profile" ? `?tab=${activeTab}` : ""))
+      setSearchParams(activeTab !== "profile" ? { tab: activeTab } : {})
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    fetchAccounts()
-  }, [])
-
-  const fetchAccounts = async () => {
-    setLoading(true)
+  const handleSyncMeta = useCallback(async (clientId: string) => {
+    setSyncing(true)
     try {
-      const data = await getConnectedAccounts()
-      setAccounts(data.accounts || [])
-    } catch (e) {
-      console.error("Error al obtener cuentas conectadas:", e)
+      const result = await syncMetaAccounts(clientId)
+      const accounts = result.accounts ?? []
+      setSyncedAccounts(accounts)
+      setMetaStatus(clientId, {
+        connected: true,
+        accountCount: accounts.length,
+        lastSync: new Date().toISOString(),
+      })
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "subscription_required") {
+        alert("Activa tu suscripción para sincronizar cuentas.")
+      }
     } finally {
-      setLoading(false)
+      setSyncing(false)
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId])
 
-  const handleConnect = async (platform: Platform) => {
-    // Check if using production Plai API (OAuth flow) or mock API (credentials modal)
-    const isProduction = import.meta.env.PROD || import.meta.env.VITE_PLAI_API_URL
-    
-    if (isProduction) {
-      // Production: Use OAuth redirect flow (real Plai API)
-      try {
-        const { createConnectionLink } = await import("@/infrastructure/api/subscriptionRepository")
-        const redirectUri = `${window.location.origin}/settings`
-        
-        const { link } = await createConnectionLink(platform, redirectUri)
-        
-        // Redirect user to platform OAuth page (Meta/Google/LinkedIn)
-        window.location.href = link
-      } catch (e: any) {
-        console.error("Error creating connection link:", e)
-        alert(e.message || "Error al conectar cuenta. Por favor intenta nuevamente.")
-      }
-    } else {
-      // Development: Show credentials modal (mock API)
-      setConnectingPlatform(platform)
+  const handleConnectMeta = async () => {
+    if (!selectedClientId) {
+      navigate("/brands")
+      return
     }
-  }
-
-  const handleConnectSuccess = async () => {
-    // Refresh accounts list after successful connection
-    await fetchAccounts()
-    setConnectingPlatform(null)
-  }
-
-  const handleSync = async () => {
+    if (!canAct) {
+      navigate("/settings?tab=account")
+      return
+    }
     try {
-      await syncConnectedAccounts()
-      await fetchAccounts()
-      alert("Cuentas sincronizadas correctamente")
-    } catch (e: any) {
-      console.error("Error al sincronizar:", e)
-      alert(e.message || "Error al sincronizar cuentas")
+      const redirectUri = `${window.location.origin}/settings?tab=integrations`
+      const { url } = await getMetaConnectLink(selectedClientId, redirectUri)
+      window.location.href = url
+    } catch (err) {
+      if (err instanceof ApiError) {
+        alert(err.serverMessage || err.message)
+      } else {
+        alert("Error al obtener el link de conexión.")
+      }
     }
-  }
-
-  const isConnected = (platform: Platform): boolean => {
-    return accounts.some(
-      (acc) => acc.platform === platform && acc.is_active
-    )
-  }
-
-  const getAccountName = (platform: Platform): string | null => {
-    const account = accounts.find(
-      (acc) => acc.platform === platform && acc.is_active
-    )
-    return account?.account_name || null
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-100 text-gray-900">
       <main className="max-w-5xl mx-auto px-6 py-10">
-        {/* Header */}
-       <div className="flex items-center gap-4 mb-8">
-        <Button
+        <div className="flex items-center gap-4 mb-8">
+          <Button
             variant="outline"
             onClick={() => navigate("/home")}
             className="flex items-center gap-2 border-blue-200 hover:bg-blue-50 text-blue-700"
-        >
+          >
             ← Volver
-        </Button>
-        <h1 className="text-3xl font-bold text-blue-700">Configuración</h1>
+          </Button>
+          <h1 className="text-3xl font-bold text-blue-700">Configuración</h1>
         </div>
 
-        {/* Tabs */}
-        <Tabs 
-          value={activeTab} 
+        <Tabs
+          value={activeTab}
           onValueChange={(value) => setSearchParams({ tab: value })}
           className="w-full"
         >
@@ -142,22 +270,12 @@ export default function SettingsPage() {
               <CardContent className="space-y-6">
                 <div>
                   <Label>Nombre</Label>
-                  <Input value={profile.name} placeholder="Tu nombre" className="mt-1" />
+                  <Input value={profile.name} placeholder="Tu nombre" className="mt-1" readOnly />
                 </div>
                 <div>
                   <Label>Correo electrónico</Label>
-                  <Input value={profile.email} placeholder="tu@correo.com" className="mt-1" />
+                  <Input value={profile.email} placeholder="tu@correo.com" className="mt-1" readOnly />
                 </div>
-                <div>
-                  <Label>Idioma</Label>
-                  <select className="w-full border rounded-lg p-2 mt-1">
-                    <option>Español</option>
-                    <option>Inglés</option>
-                  </select>
-                </div>
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                  Guardar cambios
-                </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -170,23 +288,16 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <Label>Método de pago</Label>
-                  <p className="text-gray-600 mt-1 text-sm">Visa **** 4829 (último pago hace 5 días)</p>
-                  <Button variant="outline" className="mt-2">Actualizar método de pago</Button>
-                </div>
-
-                <div>
                   <Label>Plan actual</Label>
-                  <p className="text-gray-600 mt-1 text-sm">Plan Profesional — $49/mes</p>
-                  <Button variant="outline" className="mt-2">Ver planes</Button>
+                  <p className="text-gray-600 mt-1 text-sm">
+                    {hasSubscription ? "Plan activo" : "Plan inactivo — activa para desbloquear funciones"}
+                  </p>
                 </div>
-
                 <div>
                   <Label>Seguridad</Label>
-                  <p className="text-gray-600 mt-1 text-sm">Último cambio de contraseña hace 2 meses</p>
+                  <p className="text-gray-600 mt-1 text-sm">Cambia tu contraseña cuando lo necesites.</p>
                   <Button variant="outline" className="mt-2">Cambiar contraseña</Button>
                 </div>
-
                 <div className="border-t pt-6">
                   <Button variant="destructive">Eliminar cuenta</Button>
                 </div>
@@ -200,123 +311,62 @@ export default function SettingsPage() {
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-semibold text-blue-700">Integraciones</h2>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSync}
-                    disabled={loading}
-                    className="flex items-center gap-2"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                    Sincronizar
-                  </Button>
+                  {selectedClient && (
+                    <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-3 py-1">
+                      Empresa: <span className="font-medium">{selectedClient.name}</span>
+                    </span>
+                  )}
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {loading ? (
-                  <p className="text-center text-gray-500 py-4">Cargando cuentas...</p>
-                ) : (
-                  <>
-                    <IntegrationCard
-                      platform="meta"
-                      name="Meta Ads"
-                      description="Conecta tu cuenta de Facebook Ads para importar campañas y audiencias."
-                      connected={isConnected("meta")}
-                      accountName={getAccountName("meta")}
-                      onConnect={() => handleConnect("meta")}
-                    />
-                    <IntegrationCard
-                      platform="google_ads"
-                      name="Google Ads"
-                      description="Vincula tu cuenta de Google Ads para sincronizar conversiones."
-                      connected={isConnected("google_ads")}
-                      accountName={getAccountName("google_ads")}
-                      onConnect={() => handleConnect("google_ads")}
-                    />
-                    <IntegrationCard
-                      platform="linkedin"
-                      name="LinkedIn Ads"
-                      description="Sincroniza tus campañas de LinkedIn para reportes unificados."
-                      connected={isConnected("linkedin")}
-                      accountName={getAccountName("linkedin")}
-                      onConnect={() => handleConnect("linkedin")}
-                    />
-                  </>
+                {!selectedClientId && (
+                  <p className="text-sm text-amber-600 mt-2">
+                    Primero{" "}
+                    <Link to="/brands" className="underline font-medium">
+                      crea o selecciona una marca
+                    </Link>{" "}
+                    para conectar plataformas.
+                  </p>
                 )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <ConnectResultBanner
+                  result={connectResult}
+                  onDismiss={() => setConnectResult(null)}
+                />
+
+                <IntegrationCard
+                  name="Meta Ads"
+                  icon={<Facebook className="w-5 h-5 text-blue-600" />}
+                  description="Conecta tu cuenta de Facebook/Instagram Ads para importar campañas y audiencias."
+                  connected={metaConnected}
+                  metaAccounts={syncedAccounts}
+                  canAct={canAct && !!selectedClientId}
+                  syncing={syncing}
+                  onConnect={handleConnectMeta}
+                  onSync={selectedClientId ? () => handleSyncMeta(selectedClientId) : undefined}
+                />
+
+                <IntegrationCard
+                  name="Google Ads"
+                  icon={<Link2 className="w-5 h-5 text-red-500" />}
+                  description="Vincula tu cuenta de Google Ads para sincronizar conversiones."
+                  connected={false}
+                  canAct={false}
+                  onConnect={() => alert("Google Ads próximamente.")}
+                />
+
+                <IntegrationCard
+                  name="LinkedIn Ads"
+                  icon={<Linkedin className="w-5 h-5 text-blue-700" />}
+                  description="Sincroniza tus campañas de LinkedIn para reportes unificados."
+                  connected={false}
+                  canAct={false}
+                  onConnect={() => alert("LinkedIn Ads próximamente.")}
+                />
               </CardContent>
             </Card>
-
-            {/* Connection Modal */}
-            {connectingPlatform && (
-              <ConnectAccountModal
-                open={!!connectingPlatform}
-                platform={connectingPlatform}
-                platformName={
-                  connectingPlatform === "meta"
-                    ? "Meta Ads"
-                    : connectingPlatform === "google_ads"
-                    ? "Google Ads"
-                    : "LinkedIn Ads"
-                }
-                onClose={() => setConnectingPlatform(null)}
-                onSuccess={handleConnectSuccess}
-              />
-            )}
           </TabsContent>
         </Tabs>
       </main>
-    </div>
-  )
-}
-
-function IntegrationCard({
-  platform,
-  name,
-  description,
-  connected,
-  accountName,
-  onConnect,
-}: {
-  platform: Platform
-  name: string
-  description: string
-  connected: boolean
-  accountName?: string | null
-  onConnect: () => void
-}) {
-  return (
-    <div className="flex justify-between items-center border p-4 rounded-xl bg-white/80 backdrop-blur-sm hover:shadow-md transition">
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <h3 className="font-semibold text-gray-800">{name}</h3>
-          {connected && (
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-          )}
-        </div>
-        <p className="text-gray-600 text-sm mb-1">{description}</p>
-        {connected && accountName && (
-          <p className="text-xs text-gray-500 mt-1">
-            Conectado como: <span className="font-medium">{accountName}</span>
-          </p>
-        )}
-      </div>
-      {connected ? (
-        <Button
-          variant="outline"
-          className="text-green-600 border-green-300 hover:bg-green-50 flex items-center gap-2"
-          disabled
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          Conectado
-        </Button>
-      ) : (
-            <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={onConnect}
-            >
-              Conectar
-            </Button>
-      )}
     </div>
   )
 }
