@@ -14,7 +14,7 @@ import {
 } from "@/infrastructure/api/campaignsRepository"
 import { getImages, getUploadUrl } from "@/infrastructure/api/imagesRepository"
 import { getConnectedAccounts, type ConnectedAccount } from "@/infrastructure/api/subscriptionRepository"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"

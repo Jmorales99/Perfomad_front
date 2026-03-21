@@ -16,9 +16,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
-import { Megaphone, Rocket, ImageIcon, Settings, Link2, ArrowRight, TrendingUp, DollarSign, MousePointerClick, Eye, Calendar, X, Filter } from "lucide-react"
+import { Calendar, X, Filter } from "lucide-react"
 import { SubscriptionBanner } from "@/components/SubscriptionBanner"
-import { SalesChart } from "@/components/SalesChart"
 
 interface DashboardMetrics {
   summary: {
@@ -128,11 +127,11 @@ export default function HomePage() {
   }, [campaigns])
   
   // Memoize CPA and ROA calculations
-  const { avgCPA, avgROA } = useMemo(() => {
+  const { avgROA } = useMemo(() => {
     let totalSpend = 0
     let totalRevenue = 0
     let totalConversions = 0
-    
+
     campaigns.forEach((c) => {
       if (c.mock_stats) {
         totalSpend += c.mock_stats.spend || c.spend_usd || 0
@@ -142,11 +141,10 @@ export default function HomePage() {
         totalSpend += c.spend_usd || 0
       }
     })
-    
-    const cpa = totalConversions > 0 ? totalSpend / totalConversions : null
+
     const roa = totalSpend > 0 ? totalRevenue / totalSpend : null
-    
-    return { avgCPA: cpa, avgROA: roa }
+
+    return { avgROA: roa }
   }, [campaigns])
   
   const platformLabels: Record<Platform, string> = {

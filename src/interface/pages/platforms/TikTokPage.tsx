@@ -1,4 +1,5 @@
 import { usePlatformMetrics, usePlatformInsights } from "@/interface/hooks/usePlatforms"
+import type { PlatformInsightListItem } from "@/infrastructure/api/platformRepository"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertCircle, TrendingUp, Eye, MousePointerClick } from "lucide-react"
@@ -49,7 +50,7 @@ export default function TikTokPage() {
           </p>
         </div>
 
-        {metrics.is_connected ? (
+        {metrics.is_connected === true ? (
           <div className="space-y-6">
             {/* Connection Status */}
             <Card>
@@ -61,7 +62,8 @@ export default function TikTokPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-gray-600">
-                  Cuenta: <span className="font-semibold">{metrics.account_name}</span>
+                  Cuenta:{" "}
+                  <span className="font-semibold">{metrics.account_name ?? "—"}</span>
                 </p>
               </CardContent>
             </Card>
@@ -106,14 +108,14 @@ export default function TikTokPage() {
             </div>
 
             {/* Insights */}
-            {insights && insights.insights.length > 0 && (
+            {insights?.insights && insights.insights.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Insights y Recomendaciones</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {insights.insights.map((insight, index) => (
+                    {insights.insights.map((insight: PlatformInsightListItem, index: number) => (
                       <div
                         key={index}
                         className="p-3 rounded-lg border border-gray-200 bg-gray-50"

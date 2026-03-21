@@ -18,6 +18,8 @@ interface CampaignInsights {
     title: string
     description: string
     action: string
+    impact?: string
+    estimatedImprovement?: string
   }>
 }
 
@@ -361,12 +363,13 @@ export default function CampaignDetailsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {insights.recommendations.map((rec: any, index) => {
-                const Icon = priorityIcons[rec.priority]
+              {insights.recommendations.map((rec, index) => {
+                const priority = rec.priority
+                const Icon = priorityIcons[priority]
                 return (
                   <div
                     key={index}
-                    className={`p-4 rounded-lg border ${priorityColors[rec.priority]}`}
+                    className={`p-4 rounded-lg border ${priorityColors[priority]}`}
                   >
                     <div className="flex items-start gap-3">
                       <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" />

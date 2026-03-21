@@ -46,6 +46,9 @@ export interface PlatformMetricsResponse {
     spend_usd: number
     budget_usd: number
   }>
+  /** Opcional: algunas integraciones (p. ej. TikTok) pueden enviar estado de cuenta */
+  is_connected?: boolean
+  account_name?: string
 }
 
 export interface Recommendation {
@@ -63,6 +66,12 @@ export interface Trend {
   direction: "up" | "down" | "stable"
   percentage: number
   period: string
+}
+
+export interface PlatformInsightListItem {
+  message: string
+  severity: "high" | "medium" | "low"
+  recommendation: string
 }
 
 export interface PlatformInsightsResponse {
@@ -86,6 +95,8 @@ export interface PlatformInsightsResponse {
     trends: Trend[]
     insights: any
   }>
+  /** Opcional: lista simple de insights para UI (p. ej. TikTok) */
+  insights?: PlatformInsightListItem[]
 }
 
 export interface PlatformsSummaryResponse {
