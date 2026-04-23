@@ -8,20 +8,58 @@ export type ApiErrorCode =
   | 'last_brand_forbidden'
   | 'conflict'
   | 'server_error'
+  | 'oauth_reconnect_required'
   | 'unknown'
 
 export class ApiError extends Error {
   status: number
   code: ApiErrorCode
   serverMessage?: string
+  /** Present when code === 'oauth_reconnect_required' */
+  platform?: string
+  /** UUID of the ad_account row (Perfomad DB) that needs reconnection */
+  adAccountId?: string
 
-  constructor(status: number, code: ApiErrorCode, message: string, serverMessage?: string) {
+  constructor(
+    status: number,
+    code: ApiErrorCode,
+    message: string,
+    serverMessage?: string,
+    platform?: string,
+    adAccountId?: string
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.serverMessage = serverMessage
+    this.platform = platform
+    this.adAccountId = adAccountId
   }
+}
+
+/**
+ * Returns true when the error message (or body) indicates the platform token
+ * is revoked and the user must re-authorise via OAuth.
+ * Used as a heuristic fallback while the backend still returns 500 for some routes.
+ */
+export function isReconnectError(error: unknown): boolean {
+  if (error instanceof ApiError && error.code === 'oauth_reconnect_required') return true
+
+  const msg =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as any).message)
+        : ''
+
+  const lower = msg.toLowerCase()
+  return (
+    lower.includes('invalid_grant') ||
+    lower.includes('failed to refresh token') ||
+    lower.includes('token has been expired or revoked') ||
+    lower.includes('the user must reconnect')
+  )
 }
 
 /**
@@ -34,6 +72,19 @@ export function toApiError(error: unknown): ApiError | null {
   const status: number = error.response?.status ?? 0
   const body = error.response?.data ?? {}
   const serverMessage: string = body?.message ?? body?.error ?? ''
+
+  // 422 with code oauth_reconnect_required: platform token revoked.
+  // NOT treated as session expiry — the user stays logged in.
+  if (status === 422 && body?.code === 'oauth_reconnect_required') {
+    return new ApiError(
+      422,
+      'oauth_reconnect_required',
+      serverMessage || 'La conexión con la plataforma publicitaria necesita ser renovada.',
+      serverMessage,
+      body?.platform,
+      body?.ad_account_id
+    )
+  }
 
   switch (status) {
     case 401:

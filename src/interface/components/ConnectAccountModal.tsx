@@ -57,12 +57,14 @@ export function ConnectAccountModal({
     meta: "f",
     google_ads: "G",
     linkedin: "in",
+    tiktok: "T",
   }
 
   const platformColors: Record<Platform, string> = {
     meta: "bg-blue-600",
     google_ads: "bg-red-600",
     linkedin: "bg-blue-500",
+    tiktok: "bg-gray-900",
   }
 
   return (

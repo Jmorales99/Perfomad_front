@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, RefreshCw, TrendingUp, Eye, MousePointerClick, DollarSign } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useState } from "react"
+import { MetricTooltip } from "@/interface/components/MetricTooltip"
 
 export default function LinkedInPage() {
   const navigate = useNavigate()
@@ -58,7 +59,9 @@ export default function LinkedInPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Campañas</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-600">
+                  <MetricTooltip metric="campaigns">Campañas</MetricTooltip>
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{metrics.summary.total_campaigns}</div>
@@ -72,7 +75,7 @@ export default function LinkedInPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
                   <Eye className="w-4 h-4" />
-                  Impresiones
+                  <MetricTooltip metric="impressions">Impresiones</MetricTooltip>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -86,12 +89,14 @@ export default function LinkedInPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
                   <MousePointerClick className="w-4 h-4" />
-                  Clics
+                  <MetricTooltip metric="clicks">Clics</MetricTooltip>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{metrics.metrics.clicks.toLocaleString()}</div>
-                <div className="text-xs text-gray-500 mt-1">CTR: {metrics.metrics.ctr.toFixed(2)}%</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  <MetricTooltip metric="ctr">CTR</MetricTooltip>: {metrics.metrics.ctr.toFixed(2)}%
+                </div>
               </CardContent>
             </Card>
 
@@ -99,14 +104,16 @@ export default function LinkedInPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
                   <DollarSign className="w-4 h-4" />
-                  ROA
+                  <MetricTooltip metric="roa">ROA</MetricTooltip>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
                   {metrics.metrics.roa ? `${metrics.metrics.roa.toFixed(2)}x` : "N/A"}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">Revenue: ${metrics.metrics.revenue.toLocaleString()}</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  <MetricTooltip metric="revenue">Ingresos</MetricTooltip>: ${metrics.metrics.revenue.toLocaleString()}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -119,25 +126,25 @@ export default function LinkedInPage() {
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <p className="text-sm text-gray-600">Conversiones</p>
+                  <p className="text-sm text-gray-600"><MetricTooltip metric="conversions">Conversiones</MetricTooltip></p>
                   <p className="text-xl font-semibold">{metrics.metrics.conversions}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">CPC</p>
+                  <p className="text-sm text-gray-600"><MetricTooltip metric="cpc">CPC</MetricTooltip></p>
                   <p className="text-xl font-semibold">${metrics.metrics.cpc.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">CPM</p>
+                  <p className="text-sm text-gray-600"><MetricTooltip metric="cpm">CPM</MetricTooltip></p>
                   <p className="text-xl font-semibold">${metrics.metrics.cpm.toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">CPA</p>
+                  <p className="text-sm text-gray-600"><MetricTooltip metric="cpa">CPA</MetricTooltip></p>
                   <p className="text-xl font-semibold">
                     {metrics.metrics.cpa ? `$${metrics.metrics.cpa.toFixed(2)}` : "N/A"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Gasto Total</p>
+                  <p className="text-sm text-gray-600"><MetricTooltip metric="spend">Gasto Total</MetricTooltip></p>
                   <p className="text-xl font-semibold">${metrics.summary.total_spend.toLocaleString()}</p>
                 </div>
                 <div>

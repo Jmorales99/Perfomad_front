@@ -1,6 +1,6 @@
 import { apiClient } from "./client"
 
-export type Platform = "meta" | "google_ads" | "linkedin"
+export type Platform = "meta" | "google_ads" | "linkedin" | "tiktok"
 export type CampaignStatus = "active" | "paused" | "completed"
 
 // ============================================================
@@ -52,6 +52,18 @@ export interface CampaignDTO {
   product_price?: number // Selling price per product unit
   product_cost?: number // Production cost per product unit (optional)
 
+  // 🆕 Budget sync con plataforma (drift detection)
+  budget_local_daily?: number | null
+  budget_local_lifetime?: number | null
+  budget_platform_daily?: number | null
+  budget_platform_lifetime?: number | null
+  budget_source_of_truth?: "local" | "platform"
+  budget_sync_status?: "in_sync" | "drifted" | "unknown" | "error"
+  budget_drift_pct?: number | null
+  budget_last_synced_at?: string | null
+  spend_platform?: number | null
+  spend_last_synced_at?: string | null
+
   // 🆕 Campos del backend
   mock_campaign_id?: string | Record<string, string>
   mock_stats?: {
@@ -96,8 +108,9 @@ export interface CreateCampaignPayload {
 // ============================================================
 // 📦 GET /v1/campaigns
 // ============================================================
-export const getCampaigns = async (): Promise<CampaignDTO[]> => {
-  const { data } = await apiClient.get("/v1/campaigns")
+export const getCampaigns = async (clientId?: string | null): Promise<CampaignDTO[]> => {
+  const params = clientId ? { client_id: clientId } : undefined
+  const { data } = await apiClient.get("/v1/campaigns", { params })
   return data
 }
 
@@ -201,8 +214,9 @@ export const syncCampaignMetrics = async (id: string) => {
 }
 
 // 📈 GET /v1/dashboard/metrics
-export const getDashboardMetrics = async () => {
-  const { data } = await apiClient.get("/v1/dashboard/metrics")
+export const getDashboardMetrics = async (clientId?: string | null) => {
+  const params = clientId ? { client_id: clientId } : undefined
+  const { data } = await apiClient.get("/v1/dashboard/metrics", { params })
   return data
 }
 
@@ -237,20 +251,23 @@ export const getCampaignSalesHistory = async (
 export const getDashboardSalesHistory = async (
   days: number = 30,
   campaignIds?: string[],
-  platforms?: Platform[]
+  platforms?: Platform[],
+  clientId?: string | null
 ): Promise<SalesHistoryResponse> => {
-  const params: any = { days }
-  
+  const params: Record<string, string> = { days: String(days) }
+
   if (campaignIds && campaignIds.length > 0) {
     params.campaign_ids = campaignIds.join(",")
   }
-  
+
   if (platforms && platforms.length > 0) {
     params.platforms = platforms.join(",")
   }
-  
-  const { data } = await apiClient.get("/v1/dashboard/sales-history", {
-    params,
-  })
+
+  if (clientId) {
+    params.client_id = clientId
+  }
+
+  const { data } = await apiClient.get("/v1/dashboard/sales-history", { params })
   return data
 }

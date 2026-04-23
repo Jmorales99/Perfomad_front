@@ -50,9 +50,9 @@ export function NavbarPrivate() {
         className="flex items-center gap-3 cursor-pointer"
         onClick={() => navigate("/home")}
       >
-        <img src="/logo.svg" alt="Perfomad" className="w-8 h-8" />
+        <img src="/logo.svg" alt="Performad" className="w-8 h-8" />
         <h1 className="text-xl font-bold text-blue-700 tracking-tight">
-          Perfomad
+          Performad
         </h1>
       </div>
 

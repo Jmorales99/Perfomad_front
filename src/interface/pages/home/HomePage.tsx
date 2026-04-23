@@ -1,696 +1,581 @@
-import { useEffect, useState, useMemo, useCallback } from "react"
+import React, { useEffect, useState, useMemo, useCallback } from "react"
+import { useNavigate } from "react-router-dom"
 import { getProfile } from "@/infrastructure/api/profileRepository"
-import { getDashboardMetrics, getCampaigns, getDashboardSalesHistory, type CampaignDTO, type SalesHistoryResponse, type Platform } from "@/infrastructure/api/campaignsRepository"
-import { useDashboardPlatformSummary } from "@/interface/hooks/usePlatforms"
-import { PlatformCard } from "@/interface/components/PlatformCard"
-import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuCheckboxItem,
-} from "@/components/ui/dropdown-menu"
-import { Calendar, X, Filter } from "lucide-react"
+  getConsolidatedDashboard,
+  syncDashboard,
+  type ConsolidatedDashboardResult,
+  type ConsolidatedCampaign,
+  type ConsolidatedPlatform,
+} from "@/infrastructure/api/dashboardRepository"
+import { useDashboardPlatformSummary } from "@/interface/hooks/usePlatforms"
+import { StatusFilter, matchesStatusFilter, type StatusFilterValue } from "@/interface/components/StatusFilter"
+import { MetricTooltip } from "@/interface/components/MetricTooltip"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { RefreshCw, TrendingUp, AlertCircle, ArrowUpRight, ChevronDown, ChevronRight } from "lucide-react"
 import { SubscriptionBanner } from "@/components/SubscriptionBanner"
+import { useClient } from "@/app/providers/ClientProvider"
+import InlineAdSets from "@/interface/components/platforms/shared/InlineAdSets"
+import type { PlatformSummary } from "@/infrastructure/api/platformRepository"
 
-interface DashboardMetrics {
-  summary: {
-    total_campaigns: number
-    active_campaigns: number
-    paused_campaigns: number
-    completed_campaigns: number
-    total_spend: number
-    total_budget: number
-    budget_utilization: number
-  }
-  metrics: {
-    total_impressions: number
-    total_clicks: number
-    total_conversions: number
-    average_ctr: number
-    average_cpc: number
-    average_cpm: number
-  }
-  recent_campaigns: Array<{
-    id: string
-    name: string
-    status: string
-    platforms: string[]
-    spend_usd: number
-    budget_usd: number
-    created_at: string
-  }>
-  platform_distribution: Record<string, number>
+const HIERARCHY_PLATFORMS = new Set(["meta", "google_ads"])
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type DatePreset = "7d" | "30d" | "90d"
+
+const DATE_PRESETS: { label: string; value: DatePreset }[] = [
+  { label: "7 días", value: "7d" },
+  { label: "30 días", value: "30d" },
+  { label: "90 días", value: "90d" },
+]
+
+function getDateRange(preset: DatePreset): { since: string; until: string } {
+  const until = new Date()
+  const since = new Date()
+  since.setDate(since.getDate() - (preset === "7d" ? 7 : preset === "30d" ? 30 : 90))
+  const fmt = (d: Date) => d.toISOString().split("T")[0]
+  return { since: fmt(since), until: fmt(until) }
 }
 
+type PlatformTab = "all" | "meta" | "google_ads" | "linkedin" | "tiktok"
+
+const PLATFORM_LABELS: Record<string, string> = {
+  all: "Todas",
+  meta: "Meta",
+  google_ads: "Google Ads",
+  linkedin: "LinkedIn",
+  tiktok: "TikTok",
+}
+
+const PLATFORM_COLORS: Record<string, string> = {
+  meta: "bg-blue-500",
+  google_ads: "bg-red-500",
+  linkedin: "bg-blue-700",
+  tiktok: "bg-gray-900",
+}
+
+const PLATFORM_URL: Record<string, string> = {
+  meta: "meta",
+  google_ads: "google-ads",
+  linkedin: "linkedin",
+  tiktok: "tiktok",
+}
+
+// ── Format helpers ─────────────────────────────────────────────────────────────
+
+function formatMoney(n: number) {
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+}
+
+function formatNumber(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return n.toLocaleString(undefined, { maximumFractionDigits: 0 })
+}
+
+function timeAgo(isoString: string | null): string {
+  if (!isoString) return "Nunca"
+  const diff = Date.now() - new Date(isoString).getTime()
+  const minutes = Math.floor(diff / 60_000)
+  if (minutes < 1) return "Hace un momento"
+  if (minutes < 60) return `Hace ${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `Hace ${hours}h`
+  const days = Math.floor(hours / 24)
+  return `Hace ${days} día${days > 1 ? "s" : ""}`
+}
+
+// ── Status dot ────────────────────────────────────────────────────────────────
+
+function StatusDot({ status }: { status?: string }) {
+  const s = (status ?? "unknown").toLowerCase()
+  const color =
+    s === "active"  ? "bg-green-500"
+    : s === "paused"  ? "bg-gray-400"
+    : s === "removed" ? "bg-red-400"
+    : "bg-gray-300"
+  return <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${color}`} title={status} />
+}
+
+// ── Stat bar ──────────────────────────────────────────────────────────────────
+
+interface ActiveMetrics {
+  campaigns: number
+  spend: number
+  ctr: number
+  roa: number | null
+  impressions: number
+  clicks: number
+}
+
+function StatBar({ metrics }: { metrics: ActiveMetrics }) {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-gray-100">
+          <div className="p-5">
+            <p className="text-xs text-gray-400 mb-2">
+              <MetricTooltip metric="campaigns">Campañas</MetricTooltip>
+            </p>
+            <p className="text-xl font-bold text-blue-600">{metrics.campaigns}</p>
+            <p className="text-xs text-gray-400 mt-1">{formatNumber(metrics.impressions)} impresiones</p>
+          </div>
+          <div className="p-5">
+            <p className="text-xs text-gray-400 mb-2">
+              <MetricTooltip metric="spend">Gasto Total</MetricTooltip>
+            </p>
+            <p className="text-xl font-bold text-green-600">{formatMoney(metrics.spend)}</p>
+            <p className="text-xs text-gray-400 mt-1">{formatNumber(metrics.clicks)} clics</p>
+          </div>
+          <div className="p-5">
+            <p className="text-xs text-gray-400 mb-2">
+              <MetricTooltip metric="roa">ROA</MetricTooltip>
+            </p>
+            <p className="text-xl font-bold text-green-600">
+              {metrics.roa !== null ? `${metrics.roa.toFixed(2)}x` : "—"}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">Retorno sobre inversión</p>
+          </div>
+          <div className="p-5">
+            <p className="text-xs text-gray-400 mb-2">
+              <MetricTooltip metric="ctr">CTR Promedio</MetricTooltip>
+            </p>
+            <p className="text-xl font-bold text-purple-600">{metrics.ctr.toFixed(2)}%</p>
+            <p className="text-xs text-gray-400 mt-1">Tasa de clics</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function StatBarSkeleton() {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-gray-100">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="p-5 space-y-2">
+              <div className="h-3 w-16 bg-gray-200 rounded animate-pulse" />
+              <div className="h-6 w-20 bg-gray-200 rounded animate-pulse" />
+              <div className="h-2.5 w-14 bg-gray-100 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Platform filter strip ─────────────────────────────────────────────────────
+
+function AllPill({ isActive, count, onClick }: { isActive: boolean; count?: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all ${
+        isActive
+          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+          : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+      }`}
+    >
+      Todas
+      {count !== undefined && (
+        <span className={`text-xs rounded-full px-1.5 py-0.5 font-semibold ${
+          isActive ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
+        }`}>
+          {count}
+        </span>
+      )}
+    </button>
+  )
+}
+
+interface PlatformPillProps {
+  platform: PlatformSummary
+  consolidatedData?: ConsolidatedPlatform
+  isActive: boolean
+  onClick: () => void
+}
+
+function PlatformPill({ platform, consolidatedData, isActive, onClick }: PlatformPillProps) {
+  const navigate = useNavigate()
+  const dotColor = PLATFORM_COLORS[platform.platform] ?? "bg-gray-400"
+  const campaignCount = consolidatedData
+    ? consolidatedData.campaigns.length
+    : platform.total_campaigns
+
+  return (
+    <div
+      onClick={onClick}
+      className={`group flex items-center gap-2.5 px-4 py-2 rounded-xl border cursor-pointer transition-all ${
+        isActive
+          ? "bg-blue-50 border-blue-200 shadow-sm"
+          : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+      }`}
+    >
+      <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+      <span className={`text-sm font-medium ${isActive ? "text-blue-700" : "text-gray-700"}`}>
+        {PLATFORM_LABELS[platform.platform] ?? platform.platform}
+      </span>
+      <span className={`text-xs ${isActive ? "text-blue-400" : "text-gray-400"}`}>
+        {campaignCount}
+      </span>
+      <span className={`w-1.5 h-1.5 rounded-full ${platform.is_connected ? "bg-green-400" : "bg-gray-300"}`} />
+      {platform.is_connected && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate(`/platforms/${PLATFORM_URL[platform.platform] ?? platform.platform}`)
+          }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+          title={`Ver ${PLATFORM_LABELS[platform.platform]}`}
+        >
+          <ArrowUpRight className={`w-3.5 h-3.5 ${isActive ? "text-blue-400" : "text-gray-400"}`} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Campaign table row ─────────────────────────────────────────────────────────
+
+function CampaignRow({ c }: { c: ConsolidatedCampaign }) {
+  const navigate = useNavigate()
+  const { selectedClientId } = useClient()
+  const [expanded, setExpanded] = useState(false)
+  const supportsExpand = HIERARCHY_PLATFORMS.has(c.platform)
+
+  return (
+    <React.Fragment>
+      <tr className="border-b hover:bg-gray-50/50 transition-colors">
+        <td className="py-3 pl-3 pr-1 w-8">
+          {supportsExpand && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="p-0.5 text-gray-400 hover:text-blue-600 rounded transition"
+              title={expanded ? "Colapsar" : "Ver ad sets"}
+            >
+              {expanded
+                ? <ChevronDown className="w-4 h-4" />
+                : <ChevronRight className="w-4 h-4" />}
+            </button>
+          )}
+        </td>
+        <td className="py-3 px-4 text-sm text-gray-800 font-medium">
+          <div className="flex items-center gap-2 min-w-0">
+            <StatusDot status={c.status} />
+            <button
+              onClick={() => navigate(`/campaigns/${c.campaign_id}`)}
+              className="truncate max-w-[200px] text-left hover:underline hover:text-blue-700 transition-colors cursor-pointer"
+              title={c.name}
+            >
+              {c.name}
+            </button>
+          </div>
+        </td>
+        <td className="py-3 px-4 text-xs text-gray-500 whitespace-nowrap">
+          {PLATFORM_LABELS[c.platform] ?? c.platform}
+        </td>
+        <td className="py-3 px-4 text-sm text-right font-medium text-green-700">
+          {formatMoney(c.spend)}
+        </td>
+        <td className="py-3 px-4 text-sm text-right text-gray-600">{formatNumber(c.impressions)}</td>
+        <td className="py-3 px-4 text-sm text-right text-gray-600">{formatNumber(c.clicks)}</td>
+        <td className="py-3 px-4 text-sm text-right text-purple-600">{c.ctr.toFixed(2)}%</td>
+        <td className="py-3 px-4 text-sm text-right text-blue-700">
+          {c.roa !== null ? `${c.roa.toFixed(2)}x` : "—"}
+        </td>
+      </tr>
+      {supportsExpand && expanded && (
+        <InlineAdSets
+          campaignId={c.campaign_id}
+          clientId={selectedClientId ?? undefined}
+          platform={c.platform as "meta" | "google_ads"}
+          colSpan={8}
+        />
+      )}
+    </React.Fragment>
+  )
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function HomePage() {
+  const { selectedClientId } = useClient()
+
   const [name, setName] = useState<string>("")
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [campaigns, setCampaigns] = useState<CampaignDTO[]>([])
-  const [salesHistory, setSalesHistory] = useState<SalesHistoryResponse | null>(null)
+  const [consolidated, setConsolidated] = useState<ConsolidatedDashboardResult | null>(null)
   const [loading, setLoading] = useState(true)
-  const { data: platformsSummary, loading: platformsLoading } = useDashboardPlatformSummary()
-  
-  // Date filter state for sales chart
-  const [customStartDate, setCustomStartDate] = useState<string>("")
-  const [customEndDate, setCustomEndDate] = useState<string>("")
-  const [daysFilter, setDaysFilter] = useState<number>(90) // Default 90 days
-  const [dateFilterOpen, setDateFilterOpen] = useState<boolean>(false)
-  
-  // Campaign and platform filter state for sales chart
-  const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([])
-  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
-  // Fetch sales history with date filter (memoized)
-  const fetchSalesHistory = useCallback(async () => {
-    try {
-      let historyData: SalesHistoryResponse | null = null
-      
-      let days = daysFilter
-      if (customStartDate && customEndDate) {
-        // Calculate days between dates
-        const start = new Date(customStartDate)
-        const end = new Date(customEndDate)
-        days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      }
-      
-      // Get campaign IDs and platforms for filtering
-      const campaignIds = selectedCampaignIds.length > 0 ? selectedCampaignIds : undefined
-      const platforms = selectedPlatforms.length > 0 ? selectedPlatforms : undefined
-      
-      historyData = await getDashboardSalesHistory(days, campaignIds, platforms).catch(() => null)
-      
-      setSalesHistory(historyData)
-    } catch (err) {
-      console.error("Error al obtener historial de ventas:", err)
-    }
-  }, [daysFilter, customStartDate, customEndDate, selectedCampaignIds, selectedPlatforms])
+  const { data: platformsSummary, loading: platformsLoading } = useDashboardPlatformSummary(selectedClientId)
+
+  const [activePlatformTab, setActivePlatformTab] = useState<PlatformTab>("all")
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("all")
+  const [datePreset, setDatePreset] = useState<DatePreset>("30d")
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [profile, dashboardData, campaignsData] = await Promise.all([
-          getProfile(),
-          getDashboardMetrics(),
-          getCampaigns(),
-        ])
+    if (!selectedClientId) return
+    setLoading(true)
+    setConsolidated(null)
+
+    Promise.all([
+      getProfile(),
+      getConsolidatedDashboard(selectedClientId, undefined, getDateRange(datePreset)),
+    ])
+      .then(([profile, data]) => {
         setName(profile.name)
-        setMetrics(dashboardData)
-        setCampaigns(campaignsData) // Store all campaigns for filtering
-      } catch (err) {
-        console.error("Error al obtener datos:", err)
-      } finally {
-        setLoading(false)
+        setConsolidated(data)
+      })
+      .catch((err) => console.error("Error al cargar dashboard:", err))
+      .finally(() => setLoading(false))
+  }, [selectedClientId, datePreset])
+
+  const handleSync = useCallback(async () => {
+    if (!selectedClientId || syncing) return
+    setSyncing(true)
+    setSyncError(null)
+    try {
+      const fresh = await syncDashboard(selectedClientId, getDateRange(datePreset))
+      setConsolidated(fresh)
+    } catch (err: any) {
+      console.error("Error al sincronizar:", err)
+      setSyncError(err?.response?.data?.error ?? err?.message ?? "Error al sincronizar")
+    } finally {
+      setSyncing(false)
+    }
+  }, [selectedClientId, syncing, datePreset])
+
+  const activePlatformData: ConsolidatedPlatform | null = useMemo(() => {
+    if (activePlatformTab === "all" || !consolidated) return null
+    return consolidated.platforms.find((p) => p.platform === activePlatformTab) ?? null
+  }, [activePlatformTab, consolidated])
+
+  const activeMetrics = useMemo((): ActiveMetrics | null => {
+    if (!consolidated) return null
+    if (activePlatformTab === "all") {
+      const t = consolidated.totals
+      return {
+        campaigns: consolidated.campaigns.length,
+        spend: t.spend,
+        ctr: t.ctr,
+        roa: t.roa,
+        impressions: t.impressions,
+        clicks: t.clicks,
       }
     }
-    fetchData()
-  }, [])
-
-  // Debounce fetchSalesHistory to avoid too many API calls
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchSalesHistory()
-    }, 300) // Wait 300ms after user stops changing filters
-
-    return () => clearTimeout(timer)
-  }, [fetchSalesHistory])
-  
-  // Get unique campaign names for filter (memoized)
-  const getUniqueCampaignNames = useMemo(() => {
-    return campaigns.map((c) => ({ id: c.id, name: c.name })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [campaigns])
-  
-  // Memoize CPA and ROA calculations
-  const { avgROA } = useMemo(() => {
-    let totalSpend = 0
-    let totalRevenue = 0
-    let totalConversions = 0
-
-    campaigns.forEach((c) => {
-      if (c.mock_stats) {
-        totalSpend += c.mock_stats.spend || c.spend_usd || 0
-        totalRevenue += c.mock_stats.total_sales || c.mock_stats.revenue || 0
-        totalConversions += c.mock_stats.conversions || 0
-      } else {
-        totalSpend += c.spend_usd || 0
-      }
-    })
-
-    const roa = totalSpend > 0 ? totalRevenue / totalSpend : null
-
-    return { avgROA: roa }
-  }, [campaigns])
-  
-  const platformLabels: Record<Platform, string> = {
-    meta: "Meta",
-    google_ads: "Google Ads",
-    linkedin: "LinkedIn",
-  }
-  
-  // Handle start date change - auto-set end date if not set
-  const handleStartDateChange = (date: string) => {
-    setCustomStartDate(date)
-    setDaysFilter(0) // Reset days filter when using custom dates
-    // If end date is not set or is before the new start date, set it to today
-    if (!customEndDate || new Date(date) > new Date(customEndDate)) {
-      setCustomEndDate(new Date().toISOString().split('T')[0])
+    return {
+      campaigns: activePlatformData?.campaigns.length ?? 0,
+      spend: activePlatformData?.spend ?? 0,
+      ctr: activePlatformData?.ctr ?? 0,
+      roa: activePlatformData?.roa ?? null,
+      impressions: activePlatformData?.impressions ?? 0,
+      clicks: activePlatformData?.clicks ?? 0,
     }
-  }
-  
-  // Handle custom date range apply
-  const handleApplyCustomDateRange = () => {
-    if (!customStartDate) {
-      alert("Por favor, selecciona una fecha de inicio")
-      return
-    }
-    
-    // Auto-fill end date with today if not selected
-    const endDate = customEndDate || new Date().toISOString().split('T')[0]
-    
-    if (new Date(customStartDate) > new Date(endDate)) {
-      alert("La fecha de inicio debe ser anterior a la fecha de fin")
-      return
-    }
-    
-    setDaysFilter(0) // Use custom dates
-  }
-  
-  // Get formatted date range text for display
-  const getDateRangeText = (): string | null => {
-    if (customStartDate && customEndDate) {
-      const start = new Date(customStartDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
-      const end = new Date(customEndDate).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
-      return `${start} - ${end}`
-    }
-    return null
-  }
+  }, [activePlatformTab, consolidated, activePlatformData])
+
+  const activeCampaigns = useMemo((): ConsolidatedCampaign[] => {
+    if (!consolidated) return []
+    const base = activePlatformTab === "all"
+      ? consolidated.campaigns
+      : (activePlatformData?.campaigns ?? [])
+    return base.filter((c) => matchesStatusFilter(c.status, statusFilter))
+  }, [activePlatformTab, consolidated, activePlatformData, statusFilter])
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-4">
-        {/* 🧩 Banner de suscripción */}
+      <div className="max-w-6xl mx-auto py-6 space-y-5">
         <SubscriptionBanner />
 
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">
-              Bienvenido, <span className="text-blue-600">{name || "usuario"}</span>
-            </h2>
-            <p className="text-gray-500 text-sm mt-0.5">
-              Resumen de tus campañas y métricas
-            </p>
+        {/* ── Page header ─────────────────────────────────────────── */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <p className="text-sm text-gray-600">
+            {name ? `Hola, ${name.split(" ")[0]}` : "Resumen consolidado"}
+            <span className="text-gray-400"> · Plataformas publicitarias</span>
+          </p>
+          <div className="flex items-center gap-2">
+            {/* Date preset pills */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+              {DATE_PRESETS.map(({ label, value }) => (
+                <button
+                  key={value}
+                  onClick={() => setDatePreset(value)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    datePreset === value
+                      ? "bg-white text-gray-800 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {consolidated?.last_synced_at && (
+              <span className="text-xs text-gray-400 hidden sm:block">
+                {timeAgo(consolidated.last_synced_at)}
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSync}
+              disabled={syncing || !selectedClientId}
+              className="gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Actualizando…" : "Actualizar"}
+            </Button>
           </div>
         </div>
 
+        {/* ── Sync error ──────────────────────────────────────────── */}
+        {syncError && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{syncError}</span>
+            <button onClick={() => setSyncError(null)} className="ml-auto text-red-400 hover:text-red-600">✕</button>
+          </div>
+        )}
+
+        {/* ── Loading ─────────────────────────────────────────────── */}
         {loading ? (
-          <div className="text-center py-12">Cargando datos...</div>
+          <div className="space-y-4">
+            <StatBarSkeleton />
+            <div className="flex gap-2">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-10 w-28 bg-gray-200 rounded-xl animate-pulse" />
+              ))}
+            </div>
+            <Card>
+              <CardContent className="p-4">
+                <div className="h-48 bg-gray-100 rounded animate-pulse" />
+              </CardContent>
+            </Card>
+          </div>
+
+        ) : consolidated?.needs_sync ? (
+          /* ── Never-synced empty state ──────────────────────────── */
+          <Card className="max-w-xl mx-auto mt-8">
+            <CardContent className="flex flex-col items-center text-center py-12 gap-4">
+              <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
+                <RefreshCw className="w-8 h-8 text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-1">Sin datos aún</h3>
+                <p className="text-sm text-gray-500 max-w-sm">
+                  Conecta tus plataformas publicitarias y sincroniza para ver el consolidado de tus campañas.
+                </p>
+              </div>
+              <Button
+                onClick={handleSync}
+                disabled={syncing || !selectedClientId}
+                className="bg-blue-600 hover:bg-blue-700 gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Sincronizando…" : "Sincronizar ahora"}
+              </Button>
+            </CardContent>
+          </Card>
+
         ) : (
           <>
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Left Column - Main Metrics and Charts (2 columns) */}
-              <div className="lg:col-span-2 space-y-4">
-                {/* Summary Cards - Reduced to 4 most important */}
-                {metrics && (
-                  <>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <Card>
-                        <CardContent className="p-3">
-                          <p className="text-xs text-gray-500 mb-1">Total Campañas</p>
-                          <p className="text-2xl font-bold text-blue-600">{metrics.summary.total_campaigns}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {metrics.summary.active_campaigns} activas
-                          </p>
-                        </CardContent>
-                      </Card>
+            {/* Stat bar */}
+            {activeMetrics !== null && <StatBar metrics={activeMetrics} />}
 
-                      <Card>
-                        <CardContent className="p-3">
-                          <p className="text-xs text-gray-500 mb-1">Gasto Total</p>
-                          <p className="text-2xl font-bold text-green-600">
-                            ${metrics.summary.total_spend.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            de ${metrics.summary.total_budget.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </p>
-                        </CardContent>
-                      </Card>
+            {/* Platform filter strip — fuses tab + platform card */}
+            <div className="flex flex-wrap gap-2">
+              <AllPill
+                isActive={activePlatformTab === "all"}
+                count={consolidated?.campaigns.length}
+                onClick={() => setActivePlatformTab("all")}
+              />
+              {!platformsLoading && platformsSummary?.platforms.map((p) => (
+                <PlatformPill
+                  key={p.platform}
+                  platform={p}
+                  consolidatedData={consolidated?.platforms.find((cp) => cp.platform === p.platform)}
+                  isActive={activePlatformTab === p.platform}
+                  onClick={() => setActivePlatformTab(p.platform as PlatformTab)}
+                />
+              ))}
+            </div>
 
-                      <Card>
-                        <CardContent className="p-3">
-                          <p className="text-xs text-gray-500 mb-1">ROA</p>
-                          <p className="text-2xl font-bold text-green-600">
-                            {avgROA !== null ? `${avgROA.toFixed(2)}x` : "N/A"}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            Return on Ad Spend
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardContent className="p-3">
-                          <p className="text-xs text-gray-500 mb-1">CTR Promedio</p>
-                          <p className="text-2xl font-bold text-purple-600">
-                            {metrics.metrics.average_ctr.toFixed(2)}%
-                          </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {metrics.metrics.total_clicks.toLocaleString()} clics
-                          </p>
-                        </CardContent>
-                      </Card>
+            {/* Campaigns table — full width */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-base font-semibold text-gray-800">
+                    Campañas
+                    {activePlatformTab !== "all" && (
+                      <span className="ml-1.5 text-gray-400 font-normal text-sm">
+                        · {PLATFORM_LABELS[activePlatformTab]}
+                      </span>
+                    )}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <StatusFilter value={statusFilter} onChange={setStatusFilter} />
+                    <span className="text-xs text-gray-400">{activeCampaigns.length} campañas</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {activeCampaigns.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-gray-50/60">
+                          <th className="py-2.5 w-8" />
+                          <th className="py-2.5 px-4 text-left text-xs font-medium text-gray-500">Campaña</th>
+                          <th className="py-2.5 px-4 text-left text-xs font-medium text-gray-500">Plataforma</th>
+                          <th className="py-2.5 px-4 text-right text-xs font-medium text-gray-500">
+                            <MetricTooltip metric="spend">Gasto</MetricTooltip>
+                          </th>
+                          <th className="py-2.5 px-4 text-right text-xs font-medium text-gray-500">
+                            <MetricTooltip metric="imp">Impr.</MetricTooltip>
+                          </th>
+                          <th className="py-2.5 px-4 text-right text-xs font-medium text-gray-500">
+                            <MetricTooltip metric="clicks">Clics</MetricTooltip>
+                          </th>
+                          <th className="py-2.5 px-4 text-right text-xs font-medium text-gray-500">
+                            <MetricTooltip metric="ctr">CTR</MetricTooltip>
+                          </th>
+                          <th className="py-2.5 px-4 text-right text-xs font-medium text-gray-500">
+                            <MetricTooltip metric="roa">ROA</MetricTooltip>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeCampaigns.map((c) => (
+                          <CampaignRow key={`${c.platform}-${c.campaign_id}`} c={c} />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                      <TrendingUp className="w-5 h-5 text-gray-400" />
                     </div>
-
-                    {/* Sales History Chart with Filter */}
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-center flex-wrap gap-2">
-                          <CardTitle className="text-base">Historial de Ventas</CardTitle>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Campaign Names Filter */}
-                            <DropdownMenu modal={false}>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="gap-2">
-                                  <Filter className="w-4 h-4" />
-                                  Campañas
-                                  {selectedCampaignIds.length > 0 && (
-                                    <Badge variant="secondary" className="ml-1">
-                                      {selectedCampaignIds.length}
-                                    </Badge>
-                                  )}
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent 
-                                align="end" 
-                                className="w-64 max-h-96 overflow-y-auto"
-                                onCloseAutoFocus={(e) => e.preventDefault()}
-                              >
-                                <DropdownMenuLabel>Campañas</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {getUniqueCampaignNames.map((campaign) => (
-                                  <DropdownMenuCheckboxItem
-                                    key={campaign.id}
-                                    checked={selectedCampaignIds.includes(campaign.id)}
-                                    onCheckedChange={(checked) => {
-                                      if (checked) {
-                                        setSelectedCampaignIds([...selectedCampaignIds, campaign.id])
-                                      } else {
-                                        setSelectedCampaignIds(selectedCampaignIds.filter((id) => id !== campaign.id))
-                                      }
-                                    }}
-                                    onSelect={(e) => {
-                                      e.preventDefault()
-                                    }}
-                                  >
-                                    {campaign.name}
-                                  </DropdownMenuCheckboxItem>
-                                ))}
-                                {selectedCampaignIds.length > 0 && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        setSelectedCampaignIds([])
-                                      }}
-                                      onSelect={(e) => {
-                                        e.preventDefault()
-                                      }}
-                                      className="text-red-600"
-                                    >
-                                      Limpiar selección
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            
-                            {/* Platform Filter */}
-                            <DropdownMenu modal={false}>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="gap-2">
-                                  <Filter className="w-4 h-4" />
-                                  Plataformas
-                                  {selectedPlatforms.length > 0 && (
-                                    <Badge variant="secondary" className="ml-1">
-                                      {selectedPlatforms.length}
-                                    </Badge>
-                                  )}
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent 
-                                align="end" 
-                                className="w-48"
-                                onCloseAutoFocus={(e) => e.preventDefault()}
-                              >
-                                <DropdownMenuLabel>Plataformas</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {(["meta", "google_ads", "linkedin"] as Platform[]).map((platform) => (
-                                  <DropdownMenuCheckboxItem
-                                    key={platform}
-                                    checked={selectedPlatforms.includes(platform)}
-                                    onCheckedChange={(checked) => {
-                                      if (checked) {
-                                        setSelectedPlatforms([...selectedPlatforms, platform])
-                                      } else {
-                                        setSelectedPlatforms(selectedPlatforms.filter((p) => p !== platform))
-                                      }
-                                    }}
-                                    onSelect={(e) => {
-                                      e.preventDefault()
-                                    }}
-                                  >
-                                    {platformLabels[platform]}
-                                  </DropdownMenuCheckboxItem>
-                                ))}
-                                {selectedPlatforms.length > 0 && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        setSelectedPlatforms([])
-                                      }}
-                                      onSelect={(e) => {
-                                        e.preventDefault()
-                                      }}
-                                      className="text-red-600"
-                                    >
-                                      Limpiar selección
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            
-                            {/* Date Filter */}
-                            <DropdownMenu modal={false} open={dateFilterOpen} onOpenChange={setDateFilterOpen}>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="gap-2">
-                                  <Calendar className="w-4 h-4" />
-                                  Fecha
-                                  {(customStartDate && customEndDate) && (
-                                    <Badge variant="secondary" className="ml-1">
-                                      ✓
-                                    </Badge>
-                                  )}
-                                </Button>
-                              </DropdownMenuTrigger>
-                            <DropdownMenuContent 
-                              align="end" 
-                              className="w-64"
-                              onCloseAutoFocus={(e) => e.preventDefault()}
-                            >
-                              <DropdownMenuLabel>Filtrar por fecha</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <div className="p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                {/* Quick Filters */}
-                                <div className="space-y-1">
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.preventDefault()
-                                      setDaysFilter(7)
-                                      setCustomStartDate("")
-                                      setCustomEndDate("")
-                                    }}
-                                    onSelect={(e) => e.preventDefault()}
-                                  >
-                                    Últimos 7 días
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.preventDefault()
-                                      setDaysFilter(30)
-                                      setCustomStartDate("")
-                                      setCustomEndDate("")
-                                    }}
-                                    onSelect={(e) => e.preventDefault()}
-                                  >
-                                    Últimos 30 días
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.preventDefault()
-                                      setDaysFilter(90)
-                                      setCustomStartDate("")
-                                      setCustomEndDate("")
-                                    }}
-                                    onSelect={(e) => e.preventDefault()}
-                                  >
-                                    Últimos 90 días (por defecto)
-                                  </DropdownMenuItem>
-                                </div>
-                                <DropdownMenuSeparator />
-                                {/* Custom Date Range Inputs */}
-                                <div className="space-y-2">
-                                  <div>
-                                    <Label htmlFor="start-date-filter" className="text-xs text-gray-600">Desde</Label>
-                                    <input
-                                      id="start-date-filter"
-                                      type="date"
-                                      value={customStartDate}
-                                      onChange={(e) => {
-                                        e.stopPropagation()
-                                        handleStartDateChange(e.target.value)
-                                      }}
-                                      onMouseDown={(e) => e.stopPropagation()}
-                                      onFocus={(e) => e.stopPropagation()}
-                                      className="w-full border rounded px-2 py-1.5 text-sm mt-1"
-                                      max={new Date().toISOString().split('T')[0]}
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label htmlFor="end-date-filter" className="text-xs text-gray-600">Hasta (opcional)</Label>
-                                    <input
-                                      id="end-date-filter"
-                                      type="date"
-                                      value={customEndDate || new Date().toISOString().split('T')[0]}
-                                      onChange={(e) => {
-                                        e.stopPropagation()
-                                        setCustomEndDate(e.target.value)
-                                      }}
-                                      onMouseDown={(e) => e.stopPropagation()}
-                                      onFocus={(e) => e.stopPropagation()}
-                                      className="w-full border rounded px-2 py-1.5 text-sm mt-1"
-                                      min={customStartDate || undefined}
-                                      max={new Date().toISOString().split('T')[0]}
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      handleApplyCustomDateRange()
-                                      setDateFilterOpen(false)
-                                    }}
-                                    className="bg-blue-600 hover:bg-blue-700 flex-1"
-                                    disabled={!customStartDate}
-                                  >
-                                    Aplicar
-                                  </Button>
-                                  {(customStartDate || customEndDate || daysFilter !== 90) && (
-                                    <Button
-                                      size="sm"
-                                      type="button"
-                                      variant="outline"
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        e.stopPropagation()
-                                        setCustomStartDate("")
-                                        setCustomEndDate("")
-                                        setDaysFilter(90)
-                                      }}
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                              {(customStartDate && customEndDate) && getDateRangeText() && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <div className="px-2 py-1.5">
-                                    <div className="text-xs text-gray-500 mb-1">Rango actual:</div>
-                                    <div className="text-sm font-medium text-blue-700">
-                                      {getDateRangeText()}
-                                    </div>
-                                  </div>
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                          
-                          {/* Clear All Filters Button */}
-                          {(selectedCampaignIds.length > 0 || selectedPlatforms.length > 0 || (customStartDate && customEndDate) || daysFilter !== 30) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedCampaignIds([])
-                                setSelectedPlatforms([])
-                                setCustomStartDate("")
-                                setCustomEndDate("")
-                                setDaysFilter(30)
-                              }}
-                              className="text-gray-600 hover:text-gray-800"
-                            >
-                              <X className="w-4 h-4 mr-1" />
-                              Limpiar
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        {salesHistory && salesHistory.data && salesHistory.data.length > 0 ? (
-                          <div>
-                            {/* Chart content without Card wrapper */}
-                            <div className="space-y-3">
-                              {/* SVG Chart */}
-                              <div className="w-full overflow-x-auto">
-                                <svg
-                                  viewBox="0 0 100 50"
-                                  className="w-full h-36 border-b border-l border-gray-200"
-                                  preserveAspectRatio="none"
-                                >
-                                  {/* Grid lines */}
-                                  {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-                                    const y = 10 + ratio * 30
-                                    return (
-                                      <line
-                                        key={ratio}
-                                        x1={10}
-                                        y1={y}
-                                        x2={90}
-                                        y2={y}
-                                        stroke="#e5e7eb"
-                                        strokeWidth="0.5"
-                                      />
-                                    )
-                                  })}
-
-                                  {/* Sales line */}
-                                  {(() => {
-                                    const sorted = [...salesHistory.data].sort((a, b) => 
-                                      new Date(a.date).getTime() - new Date(b.date).getTime()
-                                    )
-                                    const maxSales = Math.max(...sorted.map((d) => d.total_sales), 1)
-                                    const minSales = Math.min(...sorted.map((d) => d.total_sales), 0)
-                                    const range = maxSales - minSales || 1
-                                    
-                                    const points = sorted.map((point, index) => {
-                                      const x = 10 + (index / (sorted.length - 1 || 1)) * 80
-                                      const y = 40 - ((point.total_sales - minSales) / range) * 30
-                                      return { x, y, ...point }
-                                    })
-                                    
-                                    const pathData = points
-                                      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-                                      .join(" ")
-                                    
-                                    return (
-                                      <>
-                                        <path
-                                          d={pathData}
-                                          fill="none"
-                                          stroke="#3b82f6"
-                                          strokeWidth="1.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                        {points.map((point, index) => (
-                                          <circle
-                                            key={index}
-                                            cx={point.x}
-                                            cy={point.y}
-                                            r="1.5"
-                                            fill="#3b82f6"
-                                            className="hover:r-2 transition-all cursor-pointer"
-                                          >
-                                            <title>
-                                              {new Date(point.date).toLocaleDateString('es-CL')}: ${point.total_sales.toFixed(2)}
-                                            </title>
-                                          </circle>
-                                        ))}
-                                      </>
-                                    )
-                                  })()}
-                                </svg>
-                              </div>
-
-                              {/* Legend and Summary */}
-                              <div className="grid grid-cols-3 gap-3 pt-3 border-t">
-                                <div>
-                                  <p className="text-xs text-gray-500 mb-0.5">Ventas Totales</p>
-                                  <p className="text-base font-bold text-blue-600">
-                                    ${salesHistory.data.reduce((sum, d) => sum + d.total_sales, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-500 mb-0.5">Promedio Diario</p>
-                                  <p className="text-base font-bold text-gray-700">
-                                    ${(salesHistory.data.reduce((sum, d) => sum + d.total_sales, 0) / salesHistory.data.length).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-500 mb-0.5">Último Día</p>
-                                  <p className="text-base font-bold text-green-600">
-                                    ${salesHistory.data[salesHistory.data.length - 1].total_sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Timeline labels */}
-                              {salesHistory.data.length > 0 && (() => {
-                                const sorted = [...salesHistory.data].sort((a, b) => 
-                                  new Date(a.date).getTime() - new Date(b.date).getTime()
-                                )
-                                return (
-                                  <div className="flex justify-between text-xs text-gray-400 mt-2">
-                                    <span>{new Date(sorted[0].date).toLocaleDateString('es-CL', { month: 'short', day: 'numeric' })}</span>
-                                    <span>{new Date(sorted[sorted.length - 1].date).toLocaleDateString('es-CL', { month: 'short', day: 'numeric' })}</span>
-                                  </div>
-                                )
-                              })()}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center text-gray-500 py-6 text-sm">
-                            No hay datos de ventas disponibles para el período seleccionado.
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-
-                  </>
-                )}
-              </div>
-
-              {/* Right Column - Platforms (1 column) */}
-              <div className="lg:col-span-1">
-                {/* Platforms Section */}
-                {!platformsLoading && platformsSummary && platformsSummary.platforms.length > 0 && (
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-800 mb-2">Plataformas</h3>
-                    <div className="space-y-2">
-                      {platformsSummary.platforms.map((platform) => (
-                        <PlatformCard key={platform.platform} platform={platform} />
-                      ))}
-                    </div>
+                    <p className="text-sm text-gray-500 font-medium">
+                      {statusFilter !== "all"
+                        ? `Sin campañas ${statusFilter === "active" ? "activas" : "pausadas"}`
+                        : activePlatformTab === "all"
+                        ? "Sin campañas sincronizadas"
+                        : `Sin campañas en ${PLATFORM_LABELS[activePlatformTab]}`}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {statusFilter !== "all"
+                        ? "Cambia el filtro de estado para ver otras campañas"
+                        : "Presiona \"Actualizar\" para sincronizar desde tus plataformas"}
+                    </p>
                   </div>
                 )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </div>

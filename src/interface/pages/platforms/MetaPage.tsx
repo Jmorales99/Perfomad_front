@@ -13,7 +13,9 @@ import {
   type MetaCampaign,
   type MetaAd,
 } from "@/infrastructure/repositories/integrations/metaRepository"
-import { ApiError } from "@/infrastructure/api/errors"
+import { ApiError, isReconnectError } from "@/infrastructure/api/errors"
+import { StatusFilter, matchesStatusFilter, type StatusFilterValue } from "@/interface/components/StatusFilter"
+import { MetricTooltip } from "@/interface/components/MetricTooltip"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -464,6 +466,7 @@ function CampaignsTable({
   error,
   currency,
   onRetry,
+  onReconnect,
   onViewAds,
 }: {
   campaigns: MetaCampaign[]
@@ -471,11 +474,13 @@ function CampaignsTable({
   error: string | null
   currency: string
   onRetry: () => void
+  onReconnect?: () => void
   onViewAds?: (c: MetaCampaign) => void
 }) {
   const [search, setSearch] = useState("")
   const [sortField, setSortField] = useState<SortField>("spend")
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc")
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("all")
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -488,6 +493,7 @@ function CampaignsTable({
 
   const filtered = campaigns
     .filter((c) => (c.campaign_name ?? "").toLowerCase().includes(search.toLowerCase()))
+    .filter((c) => matchesStatusFilter(c.status, statusFilter))
     .sort((a, b) => {
       let av: number
       let bv: number
@@ -531,9 +537,15 @@ function CampaignsTable({
         <div>
           <p className="text-sm font-medium text-red-800">Error al cargar campañas</p>
           <p className="text-xs text-red-600 mt-0.5">{error}</p>
-          <button onClick={onRetry} className="mt-2 text-xs text-red-700 underline">
-            Reintentar
-          </button>
+          {onReconnect ? (
+            <button onClick={onReconnect} className="mt-2 text-xs font-medium text-red-700 underline">
+              Reconectar Meta Ads
+            </button>
+          ) : (
+            <button onClick={onRetry} className="mt-2 text-xs text-red-700 underline">
+              Reintentar
+            </button>
+          )}
         </div>
       </div>
     )
@@ -549,16 +561,20 @@ function CampaignsTable({
 
   return (
     <div className="space-y-3">
-      {/* Search */}
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Buscar campaña..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-        />
+      {/* Search + Status filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar campaña..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+        <StatusFilter value={statusFilter} onChange={setStatusFilter} accentColor="blue" />
+        <span className="text-xs text-gray-400">{filtered.length} campañas</span>
       </div>
 
       {/* Table */}
@@ -573,40 +589,40 @@ function CampaignsTable({
                 className="text-right px-3 py-2.5 font-medium text-gray-600 cursor-pointer whitespace-nowrap select-none"
                 onClick={() => handleSort("spend")}
               >
-                Gasto <SortIcon field="spend" />
+                <MetricTooltip metric="spend">Gasto</MetricTooltip> <SortIcon field="spend" />
               </th>
               <th
                 className="text-right px-3 py-2.5 font-medium text-gray-600 cursor-pointer whitespace-nowrap select-none"
                 onClick={() => handleSort("impressions")}
               >
-                Imp. <SortIcon field="impressions" />
+                <MetricTooltip metric="imp">Imp.</MetricTooltip> <SortIcon field="impressions" />
               </th>
               <th className="text-right px-3 py-2.5 font-medium text-gray-600 whitespace-nowrap">
-                Clics
+                <MetricTooltip metric="clicks">Clics</MetricTooltip>
               </th>
               <th className="text-right px-3 py-2.5 font-medium text-gray-600 whitespace-nowrap">
-                CTR
+                <MetricTooltip metric="ctr">CTR</MetricTooltip>
               </th>
               <th className="text-right px-3 py-2.5 font-medium text-gray-600 whitespace-nowrap">
-                CPC
+                <MetricTooltip metric="cpc">CPC</MetricTooltip>
               </th>
               <th className="text-right px-3 py-2.5 font-medium text-gray-600 whitespace-nowrap">
-                CPM
+                <MetricTooltip metric="cpm">CPM</MetricTooltip>
               </th>
               <th
                 className="text-right px-3 py-2.5 font-medium text-gray-600 cursor-pointer whitespace-nowrap select-none"
                 onClick={() => handleSort("conversions")}
               >
-                Conv. <SortIcon field="conversions" />
+                <MetricTooltip metric="conversions">Conv.</MetricTooltip> <SortIcon field="conversions" />
               </th>
               <th
                 className="text-right px-3 py-2.5 font-medium text-gray-600 cursor-pointer whitespace-nowrap select-none"
                 onClick={() => handleSort("roas")}
               >
-                ROAS <SortIcon field="roas" />
+                <MetricTooltip metric="roas">ROAS</MetricTooltip> <SortIcon field="roas" />
               </th>
               <th className="text-right px-3 py-2.5 font-medium text-gray-600 whitespace-nowrap">
-                Ingresos
+                <MetricTooltip metric="revenue">Ingresos</MetricTooltip>
               </th>
               {onViewAds && (
                 <th className="px-3 py-2.5 w-10" />
@@ -624,7 +640,9 @@ function CampaignsTable({
                       {c.status && (
                         <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            c.status === "ACTIVE" ? "bg-green-500" : "bg-gray-300"
+                            c.status === "active" || c.status === "ACTIVE" ? "bg-green-500"
+                            : c.status === "paused" || c.status === "PAUSED" ? "bg-gray-400"
+                            : "bg-gray-300"
                           }`}
                         />
                       )}
@@ -710,7 +728,7 @@ function KpiCard({
   icon,
   accent = "blue",
 }: {
-  label: string
+  label: React.ReactNode
   value: string
   sub?: string
   icon: React.ReactNode
@@ -786,6 +804,10 @@ export default function MetaPage() {
   // ── Conectar ───────────────────────────────────────────────────────────────
   const [connecting, setConnecting] = useState(false)
 
+  // ── Reconnect flags (token revocado) ──────────────────────────────────────
+  const [metricsNeedsReconnect, setMetricsNeedsReconnect] = useState(false)
+  const [campaignsNeedsReconnect, setCampaignsNeedsReconnect] = useState(false)
+
   // ── Cargar cuentas cuando cambia la marca ──────────────────────────────────
   const loadAccounts = useCallback(async (clientId: string) => {
     setAccountsLoading(true)
@@ -833,6 +855,7 @@ export default function MetaPage() {
     if (!selectedClientId || !selectedAdAccountId) return
     setMetricsLoading(true)
     setMetricsError(null)
+    setMetricsNeedsReconnect(false)
     try {
       const res = await getMetaMetrics({
         clientId: selectedClientId,
@@ -848,8 +871,10 @@ export default function MetaPage() {
       if (err instanceof ApiError && err.code === "subscription_required") {
         openPaywall()
       } else if (err instanceof ApiError) {
+        setMetricsNeedsReconnect(isReconnectError(err))
         setMetricsError(err.serverMessage || err.message)
       } else {
+        setMetricsNeedsReconnect(isReconnectError(err))
         setMetricsError("Error al cargar métricas.")
       }
     } finally {
@@ -867,6 +892,7 @@ export default function MetaPage() {
     if (!selectedClientId || !selectedAdAccountId) return
     setCampaignsLoading(true)
     setCampaignsError(null)
+    setCampaignsNeedsReconnect(false)
     try {
       const res = await getMetaCampaigns({
         clientId: selectedClientId,
@@ -879,14 +905,19 @@ export default function MetaPage() {
       if (err instanceof ApiError) {
         if (err.code === "subscription_required") {
           openPaywall()
+        } else if (err.code === "oauth_reconnect_required") {
+          setCampaignsNeedsReconnect(true)
+          setCampaignsError(err.serverMessage || err.message)
         } else if (err.status === 400) {
           setCampaignsError("Selecciona una cuenta publicitaria para ver campañas.")
         } else if (err.code === "not_found") {
           setCampaigns([])
         } else {
+          setCampaignsNeedsReconnect(isReconnectError(err))
           setCampaignsError(err.serverMessage || err.message)
         }
       } else {
+        setCampaignsNeedsReconnect(isReconnectError(err))
         setCampaignsError("Error al cargar campañas.")
       }
     } finally {
@@ -948,13 +979,14 @@ export default function MetaPage() {
     if (selectedClientId) localStorage.setItem(adAccountKey(selectedClientId), platformAccountId)
   }
 
-  // ── Conectar Meta ──────────────────────────────────────────────────────────
+  // ── Conectar / Reconectar Meta ────────────────────────────────────────────
   const handleConnect = async () => {
     if (!selectedClientId) { navigate("/brands"); return }
     if (!canAct) { openPaywall(); return }
     setConnecting(true)
     try {
-      const redirectUri = `${window.location.origin}/settings?tab=integrations`
+      // Always return to this page after OAuth so metrics reload automatically.
+      const redirectUri = window.location.href
       const { url } = await getMetaConnectLink(selectedClientId, redirectUri)
       window.location.href = url
     } catch (err) {
@@ -964,6 +996,18 @@ export default function MetaPage() {
       setConnecting(false)
     }
   }
+
+  // ── Handle OAuth return (connect=success|error in query string) ────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connect = params.get("connect")
+    if (!connect) return
+    window.history.replaceState(null, "", window.location.pathname)
+    if (connect === "success" && selectedClientId) {
+      void loadAccounts(selectedClientId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1175,12 +1219,20 @@ export default function MetaPage() {
               <div>
                 <p className="text-sm font-medium text-red-800">Error al cargar métricas</p>
                 <p className="text-xs text-red-600 mt-0.5">{metricsError}</p>
-                <button
-                  onClick={loadMetrics}
-                  className="mt-2 text-xs text-red-700 underline"
-                >
-                  Reintentar
-                </button>
+                <div className="flex items-center gap-3 mt-2">
+                  {metricsNeedsReconnect && (
+                    <button
+                      onClick={handleConnect}
+                      disabled={connecting}
+                      className="text-xs font-medium text-red-700 underline"
+                    >
+                      {connecting ? "Redirigiendo…" : "Reconectar Meta Ads"}
+                    </button>
+                  )}
+                  <button onClick={loadMetrics} className="text-xs text-red-600 underline">
+                    Reintentar
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1195,26 +1247,26 @@ export default function MetaPage() {
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <KpiCard
-                    label="Gasto"
+                    label={<MetricTooltip metric="spend">Gasto</MetricTooltip>}
                     value={fmtCurrency(metrics.spend, currency)}
                     icon={<DollarSign className="w-4 h-4" />}
                     accent="green"
                   />
                   <KpiCard
-                    label="Impresiones"
+                    label={<MetricTooltip metric="impressions">Impresiones</MetricTooltip>}
                     value={fmt(metrics.impressions)}
                     icon={<Eye className="w-4 h-4" />}
                     accent="blue"
                   />
                   <KpiCard
-                    label="Clics"
+                    label={<MetricTooltip metric="clicks">Clics</MetricTooltip>}
                     value={fmt(metrics.clicks)}
                     sub={metrics.ctr != null ? `CTR ${fmtPct(metrics.ctr)}` : undefined}
                     icon={<MousePointerClick className="w-4 h-4" />}
                     accent="purple"
                   />
                   <KpiCard
-                    label="Alcance"
+                    label={<MetricTooltip metric="reach">Alcance</MetricTooltip>}
                     value={fmt(metrics.reach)}
                     icon={<Users className="w-4 h-4" />}
                     accent="orange"
@@ -1229,28 +1281,28 @@ export default function MetaPage() {
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <KpiCard
-                    label="CPC"
+                    label={<MetricTooltip metric="cpc">CPC</MetricTooltip>}
                     value={fmtCurrency(metrics.cpc, currency)}
-                    sub="Coste por clic"
+                    sub="Costo por clic"
                     icon={<MousePointerClick className="w-4 h-4" />}
                     accent="blue"
                   />
                   <KpiCard
-                    label="CPM"
+                    label={<MetricTooltip metric="cpm">CPM</MetricTooltip>}
                     value={fmtCurrency(metrics.cpm, currency)}
-                    sub="Coste por mil imp."
+                    sub="Costo por mil imp."
                     icon={<DollarSign className="w-4 h-4" />}
                     accent="purple"
                   />
                   <KpiCard
-                    label="CTR"
+                    label={<MetricTooltip metric="ctr">CTR</MetricTooltip>}
                     value={fmtPct(metrics.ctr)}
-                    sub="Click-through rate"
+                    sub="Tasa de clics"
                     icon={<Percent className="w-4 h-4" />}
                     accent="orange"
                   />
                   <KpiCard
-                    label="ROAS"
+                    label={<MetricTooltip metric="roas">ROAS</MetricTooltip>}
                     value={fmtMultiplier(metrics.roas)}
                     sub={
                       metrics.revenue != null
@@ -1272,7 +1324,7 @@ export default function MetaPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {metrics.conversions != null && (
                       <KpiCard
-                        label="Conversiones"
+                        label={<MetricTooltip metric="conversions">Conversiones</MetricTooltip>}
                         value={fmt(metrics.conversions as number)}
                         icon={<TrendingUp className="w-4 h-4" />}
                         accent="green"
@@ -1280,7 +1332,7 @@ export default function MetaPage() {
                     )}
                     {metrics.revenue != null && (
                       <KpiCard
-                        label="Ingresos"
+                        label={<MetricTooltip metric="revenue">Ingresos</MetricTooltip>}
                         value={fmtCurrency(metrics.revenue as number, currency)}
                         icon={<DollarSign className="w-4 h-4" />}
                         accent="blue"
@@ -1288,9 +1340,9 @@ export default function MetaPage() {
                     )}
                     {metrics.cpa != null && (
                       <KpiCard
-                        label="CPA"
+                        label={<MetricTooltip metric="cpa">CPA</MetricTooltip>}
                         value={fmtCurrency(metrics.cpa as number, currency)}
-                        sub="Coste por conversión"
+                        sub="Costo por conversión"
                         icon={<DollarSign className="w-4 h-4" />}
                         accent="orange"
                       />
@@ -1355,6 +1407,7 @@ export default function MetaPage() {
               error={campaignsError}
               currency={currency}
               onRetry={loadCampaigns}
+              onReconnect={campaignsNeedsReconnect ? handleConnect : undefined}
               onViewAds={handleViewAds}
             />
           </div>

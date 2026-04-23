@@ -13,8 +13,27 @@ import {
   syncMetaAccounts,
   type MetaAccount,
 } from "@/infrastructure/repositories/integrations/metaRepository"
+import {
+  getGoogleAdsConnectLink,
+  syncGoogleAdsAccounts,
+  type GoogleAdsAdAccount,
+} from "@/infrastructure/repositories/integrations/googleAdsRepository"
+import {
+  getTikTokConnectLink,
+  listTikTokAdvertisers,
+  selectTikTokAdvertiser,
+  getTikTokAccounts,
+  type TikTokAdvertiser,
+} from "@/infrastructure/repositories/integrations/tiktokRepository"
 import { ApiError } from "@/infrastructure/api/errors"
-import { CheckCircle2, RefreshCw, AlertCircle, Facebook, Link2, Linkedin } from "lucide-react"
+import { CheckCircle2, RefreshCw, AlertCircle, Facebook, Link2, Linkedin, Music2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
 // ── Banner de resultado de conexión OAuth ──────────────────────────────────────
 type ConnectResult = { success: true; platform: string } | { success: false; message: string } | null
@@ -28,12 +47,20 @@ function ConnectResultBanner({
 }) {
   if (!result) return null
   if (result.success) {
+    const platformLabel =
+      result.platform === "meta"
+        ? "Meta"
+        : result.platform === "google_ads"
+          ? "Google Ads"
+          : result.platform === "tiktok"
+            ? "TikTok"
+            : result.platform
     return (
       <div className="flex items-center justify-between gap-3 rounded-xl border border-green-300 bg-green-50 px-4 py-3 mb-4">
         <div className="flex items-center gap-2 text-green-800">
           <CheckCircle2 className="w-5 h-5 shrink-0" />
           <span className="text-sm font-medium">
-            ¡{result.platform === "meta" ? "Meta" : result.platform} conectado correctamente!
+            ¡{platformLabel} conectado correctamente!
           </span>
         </div>
         <button onClick={onDismiss} className="text-green-700 text-xs underline">
@@ -144,7 +171,16 @@ export default function SettingsPage() {
   const activeTab = searchParams.get("tab") || "profile"
 
   const { hasSubscription } = useAuth()
-  const { selectedClientId, selectedClient, metaStatus, setMetaStatus } = useClient()
+  const {
+    selectedClientId,
+    selectedClient,
+    metaStatus,
+    setMetaStatus,
+    googleAdsStatus,
+    setGoogleAdsStatus,
+    tiktokStatus,
+    setTikTokStatus,
+  } = useClient()
   const canAct = hasSubscription
 
   // Estado Meta (derivado del contexto + local para sesión actual)
@@ -154,43 +190,26 @@ export default function SettingsPage() {
   const [syncing, setSyncing] = useState(false)
   const [connectResult, setConnectResult] = useState<ConnectResult>(null)
 
+  // Estado Google Ads
+  const currentGoogleAdsStatus = selectedClientId ? googleAdsStatus[selectedClientId] : null
+  const googleAdsConnected = currentGoogleAdsStatus?.connected ?? false
+  const [syncedGoogleAdsAccounts, setSyncedGoogleAdsAccounts] = useState<GoogleAdsAdAccount[]>([])
+  const [syncingGoogleAds, setSyncingGoogleAds] = useState(false)
+
+  // TikTok (sin sync tipo Meta; tras OAuth puede pedirse elegir anunciante)
+  const currentTikTokStatus = selectedClientId ? tiktokStatus[selectedClientId] : null
+  const tiktokConnected = currentTikTokStatus?.connected ?? false
+  const tiktokSelectionPending = currentTikTokStatus?.selectionPending ?? false
+  const [tiktokPickerOpen, setTikTokPickerOpen] = useState(false)
+  const [tiktokAdvertisers, setTikTokAdvertisers] = useState<TikTokAdvertiser[]>([])
+  const [tiktokSelecting, setTikTokSelecting] = useState(false)
+  const [syncedTikTokAccounts, setSyncedTikTokAccounts] = useState<{ id: string; name: string }[]>([])
+
   // Leer perfil
   useEffect(() => {
     getProfile()
       .then((d) => setProfile({ name: d.name, email: d.email }))
       .catch(() => {})
-  }, [])
-
-  // Leer query params de retorno OAuth y limpiarlos
-  useEffect(() => {
-    const connect = searchParams.get("connect")
-    const platform = searchParams.get("platform")
-    const message = searchParams.get("message")
-
-    if (connect === "success" && platform) {
-      setConnectResult({ success: true, platform })
-      // Marcar Meta como conectado en el contexto si tenemos clientId
-      if (platform === "meta" && selectedClientId) {
-        setMetaStatus(selectedClientId, {
-          connected: true,
-          accountCount: 0,
-          lastSync: null,
-        })
-      }
-      // Auto-sync si tiene suscripción y hay clientId
-      if (canAct && selectedClientId && platform === "meta") {
-        handleSyncMeta(selectedClientId)
-      }
-    } else if (connect === "error") {
-      setConnectResult({ success: false, message: message || "Error desconocido" })
-    }
-
-    if (connect) {
-      // Limpiar query params para no repetir el banner al recargar
-      window.history.replaceState(null, "", window.location.pathname + (activeTab !== "profile" ? `?tab=${activeTab}` : ""))
-      setSearchParams(activeTab !== "profile" ? { tab: activeTab } : {})
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleSyncMeta = useCallback(async (clientId: string) => {
@@ -233,6 +252,153 @@ export default function SettingsPage() {
       } else {
         alert("Error al obtener el link de conexión.")
       }
+    }
+  }
+
+  const handleSyncGoogleAds = useCallback(async (clientId: string) => {
+    setSyncingGoogleAds(true)
+    try {
+      const result = await syncGoogleAdsAccounts(clientId)
+      const accounts = result.accounts ?? []
+      setSyncedGoogleAdsAccounts(accounts)
+      setGoogleAdsStatus(clientId, {
+        connected: true,
+        accountCount: accounts.length,
+        lastSync: new Date().toISOString(),
+      })
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "subscription_required") {
+        alert("Activa tu suscripción para sincronizar cuentas.")
+      }
+    } finally {
+      setSyncingGoogleAds(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId])
+
+  const refreshTikTokStatus = useCallback(
+    async (clientId: string, openPickerIfNeeded: boolean) => {
+      try {
+        const res = await listTikTokAdvertisers(clientId)
+        const accounts = await getTikTokAccounts(clientId).catch(() => [])
+        const active = accounts.filter((a) => a.is_active)
+        setSyncedTikTokAccounts(
+          active.map((a) => ({ id: a.id, name: a.account_name ?? a.platform_account_id }))
+        )
+        const needPicker = res.selectionPending && res.advertisers.length > 0
+        if (openPickerIfNeeded && needPicker) {
+          setTikTokAdvertisers(res.advertisers)
+          setTikTokPickerOpen(true)
+        }
+        setTikTokStatus(clientId, {
+          connected: res.isConnected,
+          accountCount: active.length,
+          lastSync: active[0]?.last_synced_at ?? null,
+          selectionPending: needPicker,
+        })
+      } catch (err) {
+        console.error(err)
+      }
+    },
+    [setTikTokStatus]
+  )
+
+  // Leer query params de retorno OAuth y limpiarlos
+  useEffect(() => {
+    const connect = searchParams.get("connect")
+    if (!connect) return
+
+    const platform = searchParams.get("platform")
+    const message = searchParams.get("message")
+
+    if (connect === "success" && platform) {
+      setConnectResult({ success: true, platform })
+      const clientIdForOAuth =
+        selectedClientId ?? (typeof localStorage !== "undefined" ? localStorage.getItem("selectedClientId") : null)
+      if (platform === "meta" && clientIdForOAuth) {
+        setMetaStatus(clientIdForOAuth, { connected: true, accountCount: 0, lastSync: null })
+        if (canAct) void handleSyncMeta(clientIdForOAuth)
+      }
+      if (platform === "google_ads" && clientIdForOAuth) {
+        setGoogleAdsStatus(clientIdForOAuth, { connected: true, accountCount: 0, lastSync: null })
+        if (canAct) void handleSyncGoogleAds(clientIdForOAuth)
+      }
+      if (platform === "tiktok" && clientIdForOAuth) {
+        void refreshTikTokStatus(clientIdForOAuth, true)
+      }
+    } else if (connect === "error") {
+      setConnectResult({ success: false, message: message || "Error desconocido" })
+    }
+
+    const tab = searchParams.get("tab") || activeTab
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (tab !== "profile" ? `?tab=${tab}` : "")
+    )
+    setSearchParams(tab !== "profile" ? { tab } : {})
+  }, [searchParams, selectedClientId, canAct, activeTab, setSearchParams, setMetaStatus, setGoogleAdsStatus, handleSyncMeta, handleSyncGoogleAds, refreshTikTokStatus])
+
+  useEffect(() => {
+    if (!selectedClientId || activeTab !== "integrations") return
+    void refreshTikTokStatus(selectedClientId, false)
+  }, [selectedClientId, activeTab, refreshTikTokStatus])
+
+  const handleConnectGoogleAds = async () => {
+    if (!selectedClientId) {
+      navigate("/brands")
+      return
+    }
+    if (!canAct) {
+      navigate("/settings?tab=account")
+      return
+    }
+    try {
+      const redirectUri = `${window.location.origin}/settings?tab=integrations`
+      const { url } = await getGoogleAdsConnectLink(selectedClientId, redirectUri)
+      window.location.href = url
+    } catch (err) {
+      if (err instanceof ApiError) {
+        alert(err.serverMessage || err.message)
+      } else {
+        alert("Error al obtener el link de conexión de Google Ads.")
+      }
+    }
+  }
+
+  const handleConnectTikTok = async () => {
+    if (!selectedClientId) {
+      navigate("/brands")
+      return
+    }
+    if (!canAct) {
+      navigate("/settings?tab=account")
+      return
+    }
+    try {
+      const redirectUri = `${window.location.origin}/settings?tab=integrations`
+      const { url } = await getTikTokConnectLink(selectedClientId, redirectUri)
+      window.location.href = url
+    } catch (err) {
+      if (err instanceof ApiError) {
+        alert(err.serverMessage || err.message)
+      } else {
+        alert("Error al obtener el link de conexión de TikTok. ¿Está habilitado TikTok en el servidor?")
+      }
+    }
+  }
+
+  const handleConfirmTikTokAdvertiser = async (advertiserId: string) => {
+    if (!selectedClientId) return
+    setTikTokSelecting(true)
+    try {
+      await selectTikTokAdvertiser(selectedClientId, advertiserId)
+      setTikTokPickerOpen(false)
+      await refreshTikTokStatus(selectedClientId, false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo confirmar el anunciante")
+    } finally {
+      setTikTokSelecting(false)
     }
   }
 
@@ -348,11 +514,116 @@ export default function SettingsPage() {
                 <IntegrationCard
                   name="Google Ads"
                   icon={<Link2 className="w-5 h-5 text-red-500" />}
-                  description="Vincula tu cuenta de Google Ads para sincronizar conversiones."
-                  connected={false}
-                  canAct={false}
-                  onConnect={() => alert("Google Ads próximamente.")}
+                  description="Vincula tu cuenta de Google Ads para importar campañas y ver métricas de conversiones."
+                  connected={googleAdsConnected}
+                  metaAccounts={syncedGoogleAdsAccounts.map((a) => ({ id: a.id, name: a.account_name ?? a.platform_account_id }))}
+                  canAct={canAct && !!selectedClientId}
+                  syncing={syncingGoogleAds}
+                  onConnect={handleConnectGoogleAds}
+                  onSync={selectedClientId ? () => handleSyncGoogleAds(selectedClientId) : undefined}
                 />
+
+                {/* TikTok: OAuth + selección de anunciante (sin sync tipo Meta) */}
+                <div className="flex justify-between items-start border p-4 rounded-xl bg-white/80 backdrop-blur-sm hover:shadow-md transition gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Music2 className="w-5 h-5 text-gray-900" />
+                      <h3 className="font-semibold text-gray-800">TikTok Ads</h3>
+                      {tiktokConnected && !tiktokSelectionPending && (
+                        <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-gray-600 text-sm mb-2">
+                      Conecta TikTok Marketing API y elige la cuenta publicitaria para esta marca.
+                    </p>
+                    {tiktokConnected && !tiktokSelectionPending && syncedTikTokAccounts.length > 0 && (
+                      <p className="text-xs text-gray-500">
+                        {syncedTikTokAccounts.length} cuenta
+                        {syncedTikTokAccounts.length > 1 ? "s" : ""} vinculada
+                        {syncedTikTokAccounts.length > 1 ? "s" : ""}
+                      </p>
+                    )}
+                    {tiktokSelectionPending && (
+                      <p className="text-xs text-amber-700 mt-1">
+                        Debes elegir un anunciante autorizado para finalizar la conexión.
+                      </p>
+                    )}
+                    {!(canAct && selectedClientId) && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Activa tu suscripción para conectar plataformas.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    {tiktokConnected && !tiktokSelectionPending ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-green-600 border-green-300 hover:bg-green-50"
+                        disabled
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-1" />
+                        Conectado
+                      </Button>
+                    ) : tiktokSelectionPending ? (
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white"
+                        disabled={!canAct || !selectedClientId}
+                        onClick={async () => {
+                          if (!selectedClientId) return
+                          try {
+                            const res = await listTikTokAdvertisers(selectedClientId)
+                            if (res.advertisers.length > 0) {
+                              setTikTokAdvertisers(res.advertisers)
+                              setTikTokPickerOpen(true)
+                            }
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "No se pudo cargar anunciantes")
+                          }
+                        }}
+                      >
+                        Elegir anunciante
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={handleConnectTikTok}
+                        disabled={!canAct || !selectedClientId}
+                      >
+                        Conectar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <Dialog open={tiktokPickerOpen} onOpenChange={setTikTokPickerOpen}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Elegir cuenta publicitaria TikTok</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2 max-h-72 overflow-y-auto py-2">
+                      {tiktokAdvertisers.map((adv) => (
+                        <Button
+                          key={adv.id}
+                          variant="outline"
+                          className="w-full justify-start h-auto py-3 px-3"
+                          disabled={tiktokSelecting}
+                          onClick={() => void handleConfirmTikTokAdvertiser(adv.id)}
+                        >
+                          <span className="text-left font-medium">{adv.name}</span>
+                          <span className="text-xs text-gray-500 ml-2">ID: {adv.id}</span>
+                        </Button>
+                      ))}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="ghost" onClick={() => setTikTokPickerOpen(false)} disabled={tiktokSelecting}>
+                        Cancelar
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
 
                 <IntegrationCard
                   name="LinkedIn Ads"

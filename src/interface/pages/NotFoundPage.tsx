@@ -42,7 +42,7 @@ export default function NotFoundPage() {
       {/* Footer */}
       <footer className="z-10 mt-12 text-gray-500 text-sm">
         © {new Date().getFullYear()}{" "}
-        <span className="font-medium text-blue-700">Perfomad</span>
+        <span className="font-medium text-blue-700">Performad</span>
       </footer>
     </div>
   )

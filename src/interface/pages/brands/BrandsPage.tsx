@@ -238,7 +238,7 @@ export default function BrandsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Marcas</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Gestiona las marcas con las que operas en Perfomad.
+            Gestiona las marcas con las que operas en Performad.
           </p>
         </div>
       </div>
@@ -330,7 +330,7 @@ export default function BrandsPage() {
         <p className="text-blue-700 text-xs leading-relaxed">
           Cada marca agrupa las cuentas publicitarias (Meta, Google Ads, etc.) que le corresponden.
           Al conectar Meta, los tokens se guardan por marca — así puedes gestionar varios clientes
-          desde una sola cuenta Perfomad.
+          desde una sola cuenta Performad.
         </p>
       </div>
     </div>

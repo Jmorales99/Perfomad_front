@@ -12,6 +12,7 @@ import AuthPage from "@/interface/pages/auth/AuthPage"
 import RegisterPage from "@/interface/pages/auth/RegisterPage"
 import HomePage from "@/interface/pages/home/HomePage"
 import CampaignsPage from "@/interface/pages/home/CampaignsPage"
+import CampaignCreationPage from "@/interface/pages/home/CampaignCreationPage"
 import CampaignDetailsPage from "@/interface/pages/home/CampaignDetailsPage"
 import UploadImagesPage from "@/interface/pages/home/UploadImagesPage"
 import NotFoundPage from "@/interface/pages/NotFoundPage"
@@ -21,6 +22,12 @@ import MetaPage from "@/interface/pages/platforms/MetaPage"
 import GoogleAdsPage from "@/interface/pages/platforms/GoogleAdsPage"
 import LinkedInPage from "@/interface/pages/platforms/LinkedInPage"
 import TikTokPage from "@/interface/pages/platforms/TikTokPage"
+import PlatformPage from "@/interface/pages/platforms/PlatformPage"
+import PlatformComparePage from "@/interface/pages/platforms/PlatformComparePage"
+import PlatformCampaignDetailPage from "@/interface/pages/platforms/PlatformCampaignDetailPage"
+import MultichannelDetailsPage from "@/interface/pages/home/MultichannelDetailsPage"
+import OptimizationPage from "@/interface/pages/home/OptimizationPage"
+import OptimizationDetailsPage from "@/interface/pages/home/OptimizationDetailsPage"
 
 // Route guards
 import ProtectedRoute from "./router/ProtectedRoute"
@@ -65,15 +72,24 @@ export default function App() {
           >
             <Route path="/home" element={<HomePage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
+            <Route path="/campaigns/new" element={<CampaignCreationPage />} />
+            <Route path="/campaigns/multichannel/:multichannelId" element={<MultichannelDetailsPage />} />
             <Route path="/campaigns/:id" element={<CampaignDetailsPage />} />
-            <Route path="/optimize/:id" element={<CampaignDetailsPage />} />
+            <Route path="/optimize" element={<OptimizationPage />} />
+            <Route path="/optimize/:internalCampaignId" element={<OptimizationDetailsPage />} />
             <Route path="/images" element={<UploadImagesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/brands" element={<BrandsPage />} />
-            <Route path="/platforms/meta" element={<MetaPage />} />
-            <Route path="/platforms/google-ads" element={<GoogleAdsPage />} />
-            <Route path="/platforms/linkedin" element={<LinkedInPage />} />
-            <Route path="/platforms/tiktok" element={<TikTokPage />} />
+            {/* Unified route (new UX). Specific routes below are kept as legacy fallbacks. */}
+            <Route path="/platforms" element={<PlatformComparePage />} />
+            <Route path="/platforms/compare" element={<PlatformComparePage />} />
+            <Route path="/platforms/:platform/campaigns/:platformCampaignId" element={<PlatformCampaignDetailPage />} />
+            <Route path="/platforms/:platform" element={<PlatformPage />} />
+            {/* Legacy routes (will be removed after the unified page is validated). */}
+            <Route path="/platforms/meta/legacy" element={<MetaPage />} />
+            <Route path="/platforms/google-ads/legacy" element={<GoogleAdsPage />} />
+            <Route path="/platforms/linkedin/legacy" element={<LinkedInPage />} />
+            <Route path="/platforms/tiktok/legacy" element={<TikTokPage />} />
           </Route>
 
           {/* 🧭 404 */}

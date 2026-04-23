@@ -136,8 +136,8 @@ export function usePlatformInsights(platform: Platform) {
   return { data, loading, error, refetch }
 }
 
-// Hook para obtener resumen de plataformas del dashboard
-export function useDashboardPlatformSummary() {
+// Hook para obtener resumen de plataformas del dashboard (filtra por client si se proporciona)
+export function useDashboardPlatformSummary(clientId?: string | null) {
   const [data, setData] = useState<DashboardPlatformSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -146,7 +146,7 @@ export function useDashboardPlatformSummary() {
     async function fetchData() {
       try {
         setLoading(true)
-        const summary = await getDashboardPlatformSummary()
+        const summary = await getDashboardPlatformSummary(clientId)
         setData(summary)
         setError(null)
       } catch (err) {
@@ -157,12 +157,12 @@ export function useDashboardPlatformSummary() {
     }
 
     fetchData()
-  }, [])
+  }, [clientId])
 
   const refetch = async () => {
     try {
       setLoading(true)
-      const summary = await getDashboardPlatformSummary()
+      const summary = await getDashboardPlatformSummary(clientId)
       setData(summary)
       setError(null)
     } catch (err) {

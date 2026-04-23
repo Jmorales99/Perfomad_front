@@ -142,8 +142,106 @@ export const getPlatformInsights = async (
 // ============================================================
 // 📈 GET /v1/dashboard/platform-summary
 // ============================================================
-export const getDashboardPlatformSummary = async (): Promise<DashboardPlatformSummary> => {
-  const { data } = await apiClient.get("/v1/dashboard/platform-summary")
+export const getDashboardPlatformSummary = async (clientId?: string | null): Promise<DashboardPlatformSummary> => {
+  const params = clientId ? { client_id: clientId } : undefined
+  const { data } = await apiClient.get("/v1/dashboard/platform-summary", { params })
   return data
 }
 
+// ============================================================
+// GET /v1/platforms/:platform/metrics (account-level; requires clientId)
+// ============================================================
+
+/** Response aligned with backend PlatformsController GET .../metrics */
+export interface PlatformAccountMetricsApiResponse {
+  platform: string
+  adAccountId: string
+  accountName?: string
+  currency?: string
+  dateRange: { since: string; until: string }
+  summary: {
+    connected_accounts: number
+    is_connected: boolean
+    total_spend: number
+  }
+  metrics: {
+    impressions: number
+    clicks: number
+    reach?: number
+    spend: number
+    ctr: number
+    cpc: number
+    cpm: number
+    conversions?: number
+    revenue?: number
+    cpa?: number
+    roas?: number
+    actions?: Array<{ action_type: string; value: string }>
+    action_values?: Array<{ action_type: string; value: string }>
+  }
+}
+
+export const getPlatformAccountMetrics = async (
+  platform: Platform,
+  params: { clientId: string; adAccountId?: string; since?: string; until?: string }
+): Promise<PlatformAccountMetricsApiResponse> => {
+  const { data } = await apiClient.get(`/v1/platforms/${platform}/metrics`, {
+    params: {
+      clientId: params.clientId,
+      adAccountId: params.adAccountId,
+      since: params.since,
+      until: params.until,
+    },
+  })
+  return data as PlatformAccountMetricsApiResponse
+}
+
+/**
+ * Imports a platform-native campaign into our local `campaigns` table so it
+ * can be optimized with the AI pipeline. Idempotent: calling with the same
+ * platformCampaignId returns the same internal UUID.
+ */
+export interface ImportPlatformCampaignResponse {
+  id: string
+  imported: boolean
+}
+
+export const listMetaPages = async (
+  clientId: string
+): Promise<Array<{ id: string; name: string }>> => {
+  const { data } = await apiClient.get("/v1/platforms/meta/pages", {
+    params: { clientId },
+  })
+  return (data as { pages: Array<{ id: string; name: string }> }).pages
+}
+
+export const importPlatformCampaign = async (
+  platform: Platform,
+  platformCampaignId: string,
+  params: { clientId: string; adAccountId?: string }
+): Promise<ImportPlatformCampaignResponse> => {
+  const { data } = await apiClient.post(
+    `/v1/platforms/${platform}/campaigns/${encodeURIComponent(platformCampaignId)}/import`,
+    {
+      clientId: params.clientId,
+      adAccountId: params.adAccountId,
+    }
+  )
+  return data as ImportPlatformCampaignResponse
+}
+
+export interface ImportStatusResponse {
+  imported: boolean
+  campaign_id: string | null
+  campaign_name: string | null
+}
+
+export const checkImportStatus = async (
+  platform: string,
+  platformCampaignId: string
+): Promise<ImportStatusResponse> => {
+  const { data } = await apiClient.get("/v1/campaigns/by-platform-id", {
+    params: { platform, platformCampaignId },
+  })
+  return data as ImportStatusResponse
+}

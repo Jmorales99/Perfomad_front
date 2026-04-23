@@ -16,6 +16,20 @@ export interface MetaIntegrationStatus {
   lastSync: string | null
 }
 
+export interface GoogleAdsIntegrationStatus {
+  connected: boolean
+  accountCount: number
+  lastSync: string | null
+}
+
+export interface TikTokIntegrationStatus {
+  connected: boolean
+  accountCount: number
+  lastSync: string | null
+  /** True when OAuth finished but user must pick an advertiser */
+  selectionPending?: boolean
+}
+
 interface ClientContextType {
   clients: Client[]
   selectedClientId: string | null
@@ -29,6 +43,11 @@ interface ClientContextType {
   // Estado de integración Meta por clientId (en memoria, se resetea al recargar)
   metaStatus: Record<string, MetaIntegrationStatus>
   setMetaStatus: (clientId: string, status: MetaIntegrationStatus) => void
+  // Estado de integración Google Ads por clientId (en memoria, se resetea al recargar)
+  googleAdsStatus: Record<string, GoogleAdsIntegrationStatus>
+  setGoogleAdsStatus: (clientId: string, status: GoogleAdsIntegrationStatus) => void
+  tiktokStatus: Record<string, TikTokIntegrationStatus>
+  setTikTokStatus: (clientId: string, status: TikTokIntegrationStatus) => void
 }
 
 const ClientContext = createContext<ClientContextType | null>(null)
@@ -41,10 +60,21 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
   )
   const [loadingClients, setLoadingClients] = useState(false)
   const [metaStatus, setMetaStatusMap] = useState<Record<string, MetaIntegrationStatus>>({})
+  const [googleAdsStatus, setGoogleAdsStatusMap] = useState<Record<string, GoogleAdsIntegrationStatus>>({})
+  const [tiktokStatus, setTikTokStatusMap] = useState<Record<string, TikTokIntegrationStatus>>({})
 
-  const setMetaStatus = (clientId: string, status: MetaIntegrationStatus) => {
+  /** Referencias estables: evitan bucles infinitos en useEffect/useCallback que dependen de estos setters. */
+  const setMetaStatus = useCallback((clientId: string, status: MetaIntegrationStatus) => {
     setMetaStatusMap((prev) => ({ ...prev, [clientId]: status }))
-  }
+  }, [])
+
+  const setGoogleAdsStatus = useCallback((clientId: string, status: GoogleAdsIntegrationStatus) => {
+    setGoogleAdsStatusMap((prev) => ({ ...prev, [clientId]: status }))
+  }, [])
+
+  const setTikTokStatus = useCallback((clientId: string, status: TikTokIntegrationStatus) => {
+    setTikTokStatusMap((prev) => ({ ...prev, [clientId]: status }))
+  }, [])
 
   const setSelectedClientId = (id: string) => {
     localStorage.setItem(STORAGE_KEY, id)
@@ -121,6 +151,10 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
         removeClient,
         metaStatus,
         setMetaStatus,
+        googleAdsStatus,
+        setGoogleAdsStatus,
+        tiktokStatus,
+        setTikTokStatus,
       }}
     >
       {children}

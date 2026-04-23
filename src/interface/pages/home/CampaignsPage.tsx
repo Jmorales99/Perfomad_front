@@ -12,8 +12,15 @@ import {
   type CreateCampaignPayload,
   type AdAccountError,
 } from "@/infrastructure/api/campaignsRepository"
+import {
+  listMultichannelCampaigns,
+  type MultichannelCampaign,
+} from "@/infrastructure/api/multichannelCampaignsRepository"
 import { getImages, getUploadUrl } from "@/infrastructure/api/imagesRepository"
-import { getConnectedAccounts, type ConnectedAccount } from "@/infrastructure/api/subscriptionRepository"
+import {
+  getConnectedAccountsForBrand,
+  type ConnectedAccount,
+} from "@/infrastructure/api/subscriptionRepository"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -29,9 +36,10 @@ import {
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
-import { Pencil, Trash2, Rocket, Upload, X, BarChart3, RefreshCcw, Eye, MousePointerClick, TrendingUp, Users, DollarSign, AlertCircle, CheckCircle2, Filter, Calendar, Search } from "lucide-react"
+import { Pencil, Trash2, Rocket, Upload, X, BarChart3, RefreshCcw, Eye, MousePointerClick, TrendingUp, Users, DollarSign, AlertCircle, CheckCircle2, Filter, Calendar, Search, ExternalLink } from "lucide-react"
 import axios from "axios"
 import { useAuth } from "@/app/providers/AuthProvider"
+import { useClient } from "@/app/providers/ClientProvider"
 import { SubscriptionBanner } from "@/components/SubscriptionBanner"
 import { AdAccountErrorModal } from "@/interface/components/AdAccountErrorModal"
 import { useSubscriptionGate } from "@/interface/hooks/useSubscriptionGate"
@@ -63,6 +71,7 @@ export default function CampaignsPage() {
   const [customStartDate, setCustomStartDate] = useState<string>("")
   const [customEndDate, setCustomEndDate] = useState<string>("")
   const [allCampaigns, setAllCampaigns] = useState<CampaignDTO[]>([]) // Store all campaigns
+  const [allMultichannel, setAllMultichannel] = useState<MultichannelCampaign[]>([])
   const [selectedCampaignNames, setSelectedCampaignNames] = useState<string[]>([]) // Selected campaign names
   const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([]) // Selected platforms
   const [form, setForm] = useState<{
@@ -85,6 +94,7 @@ export default function CampaignsPage() {
 
   const navigate = useNavigate()
   const { hasSubscription } = useAuth()
+  const { selectedClientId } = useClient()
   const { canAct, openPaywall, PaywallModal } = useSubscriptionGate()
 
   // ===========================
@@ -93,8 +103,12 @@ export default function CampaignsPage() {
   const fetchCampaigns = async () => {
     setLoading(true)
     try {
-      const data = await getCampaigns()
-      setAllCampaigns(data) // Store all campaigns - the useEffect will handle filtering
+      const [simpleData, multiData] = await Promise.all([
+        getCampaigns(),
+        listMultichannelCampaigns(selectedClientId),
+      ])
+      setAllCampaigns(simpleData)
+      setAllMultichannel(multiData)
     } catch (e) {
       console.error("Error al cargar campañas:", e)
     } finally {
@@ -291,12 +305,67 @@ export default function CampaignsPage() {
   useEffect(() => {
     setCampaigns(filteredCampaigns)
   }, [filteredCampaigns])
-  
+
+  // Filtered multichannel campaigns (same filters as simple)
+  const filteredMultichannel = useMemo(() => {
+    let filtered = [...allMultichannel]
+
+    if (dateFilter !== "all") {
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      today.setHours(0, 0, 0, 0)
+      let filterStart: Date
+      let filterEnd: Date = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1)
+      if (dateFilter === "custom" && customStartDate && customEndDate) {
+        filterStart = new Date(customStartDate)
+        filterEnd = new Date(customEndDate)
+        filterEnd.setHours(23, 59, 59, 999)
+        filtered = filtered.filter((mc) => {
+          const d = new Date(mc.created_at)
+          return d >= filterStart && d <= filterEnd
+        })
+      } else if (dateFilter !== "custom") {
+        if (dateFilter === "last_7_days") {
+          filterStart = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000)
+        } else if (dateFilter === "this_week") {
+          const dow = today.getDay()
+          filterStart = new Date(today.getTime() - ((dow === 0 ? 6 : dow - 1)) * 24 * 60 * 60 * 1000)
+        } else {
+          filterStart = new Date(today.getFullYear(), today.getMonth(), 1)
+        }
+        filtered = filtered.filter((mc) => {
+          const d = new Date(mc.created_at)
+          return d >= filterStart && d <= filterEnd
+        })
+      }
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      filtered = filtered.filter((mc) => mc.name.toLowerCase().includes(q))
+    }
+
+    if (selectedCampaignNames.length > 0) {
+      filtered = filtered.filter((mc) => selectedCampaignNames.includes(mc.name))
+    }
+
+    if (selectedPlatforms.length > 0) {
+      filtered = filtered.filter((mc) =>
+        mc.platforms.some((p) => selectedPlatforms.includes(p as Platform))
+      )
+    }
+
+    return filtered
+  }, [allMultichannel, dateFilter, customStartDate, customEndDate, searchQuery, selectedCampaignNames, selectedPlatforms])
+
   // Get unique campaign names for filter (memoized)
   const getUniqueCampaignNames = useMemo(() => {
-    const names = allCampaigns.map((c) => c.name)
+    const names = [
+      ...allCampaigns.map((c) => c.name),
+      ...allMultichannel.map((mc) => mc.name),
+    ]
     return Array.from(new Set(names)).sort()
-  }, [allCampaigns])
+  }, [allCampaigns, allMultichannel])
 
   // Fetch connected accounts to filter available platforms (memoized)
   const fetchConnectedAccounts = useCallback(async () => {
@@ -304,8 +373,7 @@ export default function CampaignsPage() {
     
     setLoadingAccounts(true)
     try {
-      const data = await getConnectedAccounts()
-      const activeAccounts = data.accounts.filter((acc) => acc.is_active)
+      const activeAccounts = await getConnectedAccountsForBrand(selectedClientId)
       setConnectedAccounts(activeAccounts)
       
       // If creating (not editing), auto-select first available platform
@@ -321,7 +389,7 @@ export default function CampaignsPage() {
     } finally {
       setLoadingAccounts(false)
     }
-  }, [hasSubscription, editing, form.platforms])
+  }, [hasSubscription, editing, form.platforms, selectedClientId])
 
   // ===========================
   // Subida de imagen
@@ -365,9 +433,9 @@ export default function CampaignsPage() {
     )
 
     if (invalidPlatforms.length > 0) {
-      const platformNames = invalidPlatforms.map(
-        (p) => p === "meta" ? "Meta" : p === "google_ads" ? "Google Ads" : "LinkedIn"
-      ).join(", ")
+      const platformNames = invalidPlatforms
+        .map((p) => platformLabels[p as Platform] ?? p)
+        .join(", ")
       alert(
         `Las siguientes plataformas no tienen cuentas conectadas: ${platformNames}.\n` +
         `Por favor, conecta estas cuentas en Configuración > Integraciones antes de crear la campaña.`
@@ -428,19 +496,17 @@ export default function CampaignsPage() {
   }
 
   // ===========================
-  // Pre-check before showing modal
-  // ===========================
+  // Pre-check before opening the creation wizard at /campaigns/new.
+  // Edit flow still uses the inline modal (setShowModal(true) with `editing` set).
   const handleOpenCreateModal = async () => {
     if (!canAct) {
       openPaywall()
       return
     }
 
-    // Check if user can create campaigns
     try {
       const canCreate = await checkCanCreateCampaign()
       if (!canCreate.can_create) {
-        // Show error modal with details
         setAdAccountError({
           error: canCreate.ad_accounts_count === 0 ? "NO_AD_ACCOUNTS" : "MISSING_PLATFORM_ACCOUNTS",
           message: canCreate.message,
@@ -455,12 +521,11 @@ export default function CampaignsPage() {
         return
       }
 
-      // All good - show form modal
-      setShowModal(true)
+      // New wizard-based creation flow (multi-step, full validation, preview).
+      navigate("/campaigns/new")
     } catch (e) {
       console.error("Error verificando si puede crear campaña:", e)
-      // On error, still show the modal - let the save handle the error
-      setShowModal(true)
+      navigate("/campaigns/new")
     }
   }
 
@@ -505,8 +570,10 @@ export default function CampaignsPage() {
   // Calculate Dashboard Metrics (memoized)
   // ===========================
   const dashboardMetrics = useMemo(() => ({
-    totalCampaigns: campaigns.length,
-    activeCampaigns: campaigns.filter((c) => c.status === "active").length,
+    totalCampaigns: campaigns.length + filteredMultichannel.length,
+    activeCampaigns:
+      campaigns.filter((c) => c.status === "active").length +
+      filteredMultichannel.filter((mc) => mc.status === "active").length,
     totalSpend: campaigns.reduce((sum, c) => sum + (c.spend_usd || 0), 0),
     totalBudget: campaigns.reduce((sum, c) => sum + (c.budget_usd || 0), 0),
     totalImpressions: campaigns.reduce((sum, c) => {
@@ -554,12 +621,33 @@ export default function CampaignsPage() {
     meta: "Meta",
     google_ads: "Google Ads",
     linkedin: "LinkedIn",
+    tiktok: "TikTok",
   }
 
   const statusColors: Record<string, string> = {
     active: "bg-green-100 text-green-700",
     paused: "bg-yellow-100 text-yellow-700",
     completed: "bg-gray-100 text-gray-700",
+  }
+
+  const multichannelStatusColors: Record<string, string> = {
+    active: "bg-green-100 text-green-700",
+    paused: "bg-yellow-100 text-yellow-700",
+    completed: "bg-gray-100 text-gray-700",
+    draft: "bg-blue-100 text-blue-700",
+    publishing: "bg-blue-100 text-blue-700",
+    partial_failed: "bg-orange-100 text-orange-700",
+    archived: "bg-gray-100 text-gray-700",
+  }
+
+  const multichannelStatusLabels: Record<string, string> = {
+    active: "Activa",
+    paused: "Pausada",
+    completed: "Completada",
+    draft: "Borrador",
+    publishing: "Publicando",
+    partial_failed: "Error parcial",
+    archived: "Archivada",
   }
 
   // ===========================
@@ -587,7 +675,7 @@ export default function CampaignsPage() {
 
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-blue-700">Tus campañas</h1>
+          <h1 className="text-3xl font-bold text-blue-700">Mis Campañas</h1>
         </div>
         
         {/* Search and Filter Bar */}
@@ -695,7 +783,7 @@ export default function CampaignsPage() {
                 >
                   <DropdownMenuLabel>Plataformas</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {(["meta", "google_ads", "linkedin"] as Platform[]).map((platform) => (
+                  {(["meta", "google_ads", "linkedin", "tiktok"] as Platform[]).map((platform) => (
                     <DropdownMenuCheckboxItem
                       key={platform}
                       checked={selectedPlatforms.includes(platform)}
@@ -950,23 +1038,21 @@ export default function CampaignsPage() {
             </div>
           
           {/* Results Count */}
-          {(searchQuery || dateFilter !== "all" || selectedCampaignNames.length > 0 || selectedPlatforms.length > 0) && campaigns.length > 0 && (
+          {(searchQuery || dateFilter !== "all" || selectedCampaignNames.length > 0 || selectedPlatforms.length > 0) && (campaigns.length + filteredMultichannel.length) > 0 && (
             <div className="text-sm text-gray-600">
-              Mostrando <strong>{campaigns.length}</strong> de <strong>{allCampaigns.length}</strong> campañas
+              Mostrando <strong>{campaigns.length + filteredMultichannel.length}</strong> de <strong>{allCampaigns.length + allMultichannel.length}</strong> campañas
             </div>
           )}
 
           {/* Campaigns List */}
-          {campaigns.length === 0 ? (
+          {campaigns.length === 0 && filteredMultichannel.length === 0 ? (
             <Card className="border-blue-100 text-center p-8">
               <p className="text-gray-600 mb-4">
-                {allCampaigns.length === 0
-                  ? "Aún no tienes campañas creadas."
-                  : searchQuery || dateFilter !== "all" || selectedCampaignNames.length > 0 || selectedPlatforms.length > 0
-                  ? "No se encontraron campañas que coincidan con los filtros seleccionados."
-                  : "Aún no tienes campañas creadas."}
+                {allCampaigns.length === 0 && allMultichannel.length === 0
+                  ? "Aún no has creado ninguna campaña desde Performad. ¡Crea la primera!"
+                  : "No se encontraron campañas que coincidan con los filtros seleccionados."}
               </p>
-              {(searchQuery || dateFilter !== "all" || selectedCampaignNames.length > 0 || selectedPlatforms.length > 0) && allCampaigns.length > 0 && (
+              {(searchQuery || dateFilter !== "all" || selectedCampaignNames.length > 0 || selectedPlatforms.length > 0) && (allCampaigns.length + allMultichannel.length) > 0 && (
                 <Button
                   variant="outline"
                   className="mb-4"
@@ -982,7 +1068,7 @@ export default function CampaignsPage() {
                   Limpiar filtros y ver todas las campañas
                 </Button>
               )}
-              {allCampaigns.length === 0 && (
+              {allCampaigns.length === 0 && allMultichannel.length === 0 && (
                 <Button
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={handleOpenCreateModal}
@@ -1152,14 +1238,23 @@ export default function CampaignsPage() {
 
                     {/* Action Buttons */}
                     <div className="flex justify-between gap-2 pt-4 border-t">
-                      <Button
-                        variant="outline"
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50 flex items-center gap-2"
-                        onClick={() => navigate(`/optimize/${c.id}`)}
-                        disabled={!hasSubscription}
-                      >
-                        <Rocket className="w-4 h-4" /> Optimizar
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50 flex items-center gap-2"
+                          onClick={() => navigate(`/optimize/${c.id}`)}
+                          disabled={!hasSubscription}
+                        >
+                          <Rocket className="w-4 h-4" /> Optimizar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="text-gray-600 border-gray-200 hover:bg-gray-50 flex items-center gap-2"
+                          onClick={() => navigate(`/campaigns/${c.id}`)}
+                        >
+                          <ExternalLink className="w-4 h-4" /> Ver detalle
+                        </Button>
+                      </div>
 
                       <div className="flex gap-2">
                         <Button
@@ -1186,8 +1281,7 @@ export default function CampaignsPage() {
                             }
                             // Load connected accounts first
                             try {
-                              const accountsData = await getConnectedAccounts()
-                              const activeAccounts = accountsData.accounts.filter((acc) => acc.is_active)
+                              const activeAccounts = await getConnectedAccountsForBrand(selectedClientId)
                               setConnectedAccounts(activeAccounts)
                               
                               const campaignPlatforms = Array.isArray(c.platforms)
@@ -1199,9 +1293,9 @@ export default function CampaignsPage() {
                               const validPlatforms = campaignPlatforms.filter((p) => availablePlatforms.includes(p))
                               
                               if (validPlatforms.length === 0) {
-                                const platformNames = campaignPlatforms.map(
-                                  (p) => p === "meta" ? "Meta" : p === "google_ads" ? "Google Ads" : "LinkedIn"
-                                ).join(", ")
+                                const platformNames = campaignPlatforms
+                                  .map((p) => platformLabels[p as Platform] ?? String(p))
+                                  .join(", ")
                                 alert(
                                   `Esta campaña usa las plataformas: ${platformNames}, pero ninguna de ellas tiene cuentas conectadas actualmente. ` +
                                   `Por favor, conecta las cuentas necesarias antes de editar.`
@@ -1211,9 +1305,9 @@ export default function CampaignsPage() {
                               
                               if (validPlatforms.length < campaignPlatforms.length) {
                                 const removedPlatforms = campaignPlatforms.filter((p) => !availablePlatforms.includes(p))
-                                const removedNames = removedPlatforms.map(
-                                  (p) => p === "meta" ? "Meta" : p === "google_ads" ? "Google Ads" : "LinkedIn"
-                                ).join(", ")
+                                const removedNames = removedPlatforms
+                                  .map((p) => platformLabels[p as Platform] ?? String(p))
+                                  .join(", ")
                                 alert(
                                   `Algunas plataformas de esta campaña (${removedNames}) ya no tienen cuentas conectadas y fueron removidas.`
                                 )
@@ -1272,6 +1366,72 @@ export default function CampaignsPage() {
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {/* Multichannel campaign cards */}
+              {filteredMultichannel.map((mc) => (
+                <Card
+                  key={mc.id}
+                  className="border border-purple-100 shadow-sm hover:shadow-md transition cursor-pointer"
+                  onClick={() => navigate(`/campaigns/multichannel/${mc.id}`)}
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-lg text-gray-800 mb-2">{mc.name}</h3>
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge className="bg-purple-100 text-purple-700">Multicanal</Badge>
+                          <Badge className={multichannelStatusColors[mc.status] || "bg-gray-100 text-gray-700"}>
+                            {multichannelStatusLabels[mc.status] || mc.status}
+                          </Badge>
+                          {mc.platforms.map((p) => (
+                            <Badge key={p} variant="outline" className="text-xs">
+                              {platformLabels[p as Platform] ?? p}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex justify-between text-sm text-gray-700 mb-4 p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <span className="block text-gray-500 text-xs mb-1">Presupuesto Total</span>
+                        <strong className="text-lg">
+                          {mc.total_budget_usd ? `$${mc.total_budget_usd.toLocaleString()}` : "—"}
+                        </strong>
+                      </div>
+                      <div className="text-right">
+                        <span className="block text-gray-500 text-xs mb-1">Plataformas</span>
+                        <strong>{mc.platforms.length}</strong>
+                      </div>
+                    </div>
+                    <div className="flex justify-between gap-2 pt-4 border-t">
+                      {mc.campaign?.id && (
+                        <Button
+                          variant="outline"
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50 flex items-center gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/optimize/${mc.campaign!.id}`)
+                          }}
+                          disabled={!hasSubscription}
+                        >
+                          <Rocket className="w-4 h-4" /> Optimizar
+                        </Button>
+                      )}
+                      <Button
+                        className="bg-purple-600 hover:bg-purple-700 ml-auto flex items-center gap-2"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/campaigns/multichannel/${mc.id}`)
+                        }}
+                      >
+                        <ExternalLink className="w-4 h-4" /> Ver detalle
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -1345,9 +1505,9 @@ export default function CampaignsPage() {
               ) : (
                 <>
                   <div className="flex flex-col gap-3 mt-1">
-                    {(["meta", "google_ads", "linkedin"] as Platform[]).map((p) => {
+                    {(["meta", "google_ads", "linkedin", "tiktok"] as Platform[]).map((p) => {
                       const isConnected = connectedAccounts.some((acc) => acc.platform === p && acc.is_active)
-                      const platformName = p === "meta" ? "Meta" : p === "google_ads" ? "Google Ads" : "LinkedIn"
+                      const platformName = platformLabels[p as Platform]
                       const connectedAccount = connectedAccounts.find((acc) => acc.platform === p && acc.is_active)
                       
                       return (

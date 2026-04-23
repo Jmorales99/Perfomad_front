@@ -4,9 +4,12 @@ import { getCampaignInsights, getCampaignOverview, getCampaigns, getCampaignById
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Rocket, TrendingUp, AlertCircle, CheckCircle, Info, RefreshCw, DollarSign } from "lucide-react"
+import { ArrowLeft, Sparkles, Rocket, TrendingUp, AlertCircle, CheckCircle, Info, RefreshCw, DollarSign } from "lucide-react"
 import { useAuth } from "@/app/providers/AuthProvider"
 import { SalesChart } from "@/components/SalesChart"
+import BudgetDriftBadge from "@/interface/components/budget/BudgetDriftBadge"
+import AdsHierarchyModal from "@/interface/components/platforms/AdsHierarchyModal"
+import { Layers } from "lucide-react"
 
 interface CampaignInsights {
   campaign_id: string
@@ -33,6 +36,7 @@ export default function CampaignDetailsPage() {
   const [salesHistory, setSalesHistory] = useState<SalesHistoryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [adsModalOpen, setAdsModalOpen] = useState(false)
 
   // Memoize fetchData function
   const fetchData = useCallback(async () => {
@@ -175,7 +179,14 @@ export default function CampaignDetailsPage() {
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => setAdsModalOpen(true)}
+          >
+            <Layers className="w-4 h-4 mr-2" />
+            Ver creativos por ad set
+          </Button>
           {hasSubscription && (
             <Button
               variant="outline"
@@ -337,6 +348,16 @@ export default function CampaignDetailsPage() {
               <div className="text-xs text-gray-500">
                 ${campaign.spend_usd.toFixed(2)} de ${campaign.budget_usd.toFixed(2)}
               </div>
+              <div className="pt-2">
+                <BudgetDriftBadge
+                  campaignId={campaign.id}
+                  status={campaign.budget_sync_status}
+                  driftPct={campaign.budget_drift_pct}
+                  localDaily={campaign.budget_local_daily ?? campaign.budget_usd}
+                  platformDaily={campaign.budget_platform_daily}
+                  onSynced={fetchData}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -351,6 +372,33 @@ export default function CampaignDetailsPage() {
           title={`Historial de Ventas - ${campaign.name}`}
         />
       )}
+
+      {/* Optimization link */}
+      {hasSubscription && (
+        <div className="flex items-center justify-between p-4 rounded-xl border border-blue-200 bg-blue-50">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-blue-600" />
+            <div>
+              <p className="font-medium text-blue-900 text-sm">Optimización con IA</p>
+              <p className="text-xs text-blue-700">Analiza esta campaña y recibe recomendaciones de Claude.</p>
+            </div>
+          </div>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 shrink-0"
+            onClick={() => navigate(`/optimize/${campaign.id}`)}
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            Optimizar con IA
+          </Button>
+        </div>
+      )}
+
+      <AdsHierarchyModal
+        campaignId={campaign.id}
+        campaignName={campaign.name}
+        open={adsModalOpen}
+        onClose={() => setAdsModalOpen(false)}
+      />
 
       {/* Optimization Insights and Recommendations */}
       {insights && insights.recommendations && insights.recommendations.length > 0 && (

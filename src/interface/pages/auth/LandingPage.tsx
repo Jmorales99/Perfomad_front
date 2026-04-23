@@ -61,7 +61,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-sm border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <span className="text-xl font-bold text-blue-700 tracking-tight">
-            Perfomad
+            Performad
           </span>
           <Button
             onClick={() => navigate("/auth")}
@@ -89,7 +89,7 @@ export default function LandingPage() {
                 <span className="text-blue-600">en un solo lugar</span>
               </h1>
               <p className="text-lg text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-                Perfomad centraliza el rendimiento de tus campañas en Meta,
+                Performad centraliza el rendimiento de tus campañas en Meta,
                 Google Ads, LinkedIn y TikTok para que puedas tomar decisiones
                 con información real, sin perder tiempo saltando entre
                 plataformas.
@@ -127,10 +127,10 @@ export default function LandingPage() {
               className="text-center mb-12"
             >
               <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                ¿Qué hace Perfomad?
+                ¿Qué hace Performad?
               </h2>
               <p className="text-gray-600 text-base leading-relaxed max-w-3xl mx-auto">
-                Perfomad es una plataforma diseñada para agencias y equipos de
+                Performad es una plataforma diseñada para agencias y equipos de
                 marketing que gestionan campañas en múltiples canales
                 publicitarios. Permite consolidar datos de distintas fuentes,
                 visualizar el rendimiento de cada cuenta y facilitar la gestión
@@ -180,7 +180,7 @@ export default function LandingPage() {
               className="text-center mb-14"
             >
               <h2 className="text-3xl font-bold text-gray-900 mb-3">
-                Por qué usar Perfomad
+                Por qué usar Performad
               </h2>
               <p className="text-gray-500 text-sm">
                 Funcionalidades diseñadas para simplificar el trabajo diario de
@@ -227,7 +227,7 @@ export default function LandingPage() {
                 Menos tiempo administrando, más tiempo optimizando
               </h2>
               <p className="text-gray-600 text-sm leading-relaxed max-w-xl mx-auto">
-                Perfomad elimina la necesidad de acceder a cada plataforma por
+                Performad elimina la necesidad de acceder a cada plataforma por
                 separado para revisar resultados. Toda la información relevante
                 de tus campañas está disponible en un panel claro, accesible y
                 actualizado.
@@ -276,7 +276,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
           <span>
             © {new Date().getFullYear()}{" "}
-            <span className="font-semibold text-blue-700">Perfomad</span>
+            <span className="font-semibold text-blue-700">Performad</span>
           </span>
           <span>admin@performad.io</span>
           <button
